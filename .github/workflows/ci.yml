@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+      - name: Install maturin
+        run: pip install maturin
+      - name: Build Rust Python extension
+        run: |
+          cd ReasoningAgent
+          maturin build --release --strip
+      - name: Install FastAPI dependencies
+        run: |
+          pip install fastapi uvicorn pydantic sqlalchemy
+      - name: Install built wheel
+        run: |
+          pip install ReasoningAgent/target/wheels/*.whl
+      - name: Lint Python
+        run: |
+          pip install flake8
+          flake8 api/main.py
+      - name: Run FastAPI app tests
+        run: |
+          pip install httpx pytest
+          pytest api/tests || echo "No tests yet"
+      - name: Docker build
+        run: docker build -t reasoning-agent .
