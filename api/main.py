@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, Header, Request, status
+from fastapi import FastAPI, HTTPException, Depends, Header, Request, status, Query
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text
@@ -9,6 +9,7 @@ import os
 import importlib
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+from llm_plugins import get_plugin, list_plugins
 
 # --- Rate limiting ---
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -171,6 +172,7 @@ class TaskRequest(BaseModel):
     model: str = "text-davinci-003"
     max_tokens: int = 256
     temperature: float = 0.7
+    provider: str = Query("openai", description="LLM provider: openai or huggingface")
 
 class TaskResponse(BaseModel):
     task_id: str
@@ -192,6 +194,10 @@ class QueryResponse(BaseModel):
     temperature: float
     api_key: str | None
 
+class ModelInfo(BaseModel):
+    provider: str
+    models: list[str]
+
 # --- OAuth2 /token endpoint ---
 @app.post("/token", response_model=Token)
 def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
@@ -201,6 +207,11 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
         raise HTTPException(status_code=400, detail="Incorrect username or password")
     access_token = create_access_token(data={"sub": user.username})
     return {"access_token": access_token, "token_type": "bearer"}
+
+# --- LLM Models endpoint ---
+@app.get("/models", response_model=list[ModelInfo])
+def list_llm_models():
+    return [ModelInfo(provider=p, models=get_plugin(p).available_models()) for p in list_plugins()]
 
 # --- Endpoints ---
 def get_auth_user(
@@ -224,7 +235,7 @@ async def submit_task(
     x_api_key = auth if isinstance(auth, str) else None
     task = celery.send_task(
         "api.worker.llm_task",
-        args=[req.prompt, req.model, req.max_tokens, req.temperature, x_api_key],
+        args=[req.prompt, req.model, req.max_tokens, req.temperature, x_api_key, req.provider],
     )
     return TaskResponse(task_id=task.id)
 
@@ -294,4 +305,5 @@ def healthz():
 # - Rust LLM plugin is called via Python extension
 # - Prometheus metrics for LLM, DB, and API
 # - Async LLM tasks via Celery+Redis
+# - LLM plugin system: OpenAI, Hugging Face, extensible
 # - Ready for extension: user registration, roles, external IdP, etc.
