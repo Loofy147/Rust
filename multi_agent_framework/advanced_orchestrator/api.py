@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import asyncio
 import os
+from advanced_orchestrator.orchestrator import orchestrator
 
 app = FastAPI()
 
@@ -137,3 +138,26 @@ async def review_annotation(request: Request):
             item['review_comment'] = data.get('comment', '')
             return {"status": "reviewed"}
     return {"status": "not_found"}
+
+@app.get("/hitl_queue")
+async def hitl_queue():
+    # Return pending HITL QA tasks
+    return orchestrator.human_in_the_loop_queue
+
+@app.post("/hitl_qa")
+async def hitl_qa(request: Request):
+    data = await request.json()
+    # Find and remove the task from the queue
+    for i, task in enumerate(orchestrator.human_in_the_loop_queue):
+        if task.get('workflow_id') == data.get('workflow_id') and task.get('step') == data.get('step'):
+            orchestrator.human_in_the_loop_queue.pop(i)
+            break
+    # Log feedback/action
+    orchestrator.workflow_engine.log_feedback(data['workflow_id'], data['step'], {
+        'action': data.get('action'),
+        'edited_answer': data.get('edited_answer'),
+        'feedback': data.get('feedback'),
+        'user': data.get('user')
+    })
+    # Optionally, trigger re-processing or finalize output
+    return {"status": "qa_logged"}

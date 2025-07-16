@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { API_BASE_URL } from './config';
-import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, TextField, Button, LinearProgress, Typography, Dialog, DialogTitle, DialogContent, DialogActions, Tabs, Tab, Box, Snackbar, Alert } from '@mui/material';
+import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, TextField, Button, LinearProgress, Typography, Dialog, DialogTitle, DialogContent, DialogActions, Tabs, Tab, Box, Snackbar, Alert, DialogContentText } from '@mui/material';
 
 function App() {
   const [samples, setSamples] = useState([]);
@@ -15,11 +15,16 @@ function App() {
   const [reviewQueue, setReviewQueue] = useState([]);
   const [history, setHistory] = useState([]);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+  const [qaQueue, setQaQueue] = useState([]);
+  const [qaActionStatus, setQaActionStatus] = useState('');
+  const [qaEdit, setQaEdit] = useState('');
+  const [qaFeedback, setQaFeedback] = useState('');
 
   useEffect(() => {
     if (user) fetchSamples();
     if (user) fetchHistory();
     if (user) fetchReviewQueue();
+    if (user) fetchQaQueue();
   }, [user]);
 
   const fetchSamples = async () => {
@@ -58,6 +63,26 @@ function App() {
     setHistory(res.data.filter(item => item.user === user));
   };
 
+  const fetchQaQueue = async () => {
+    const res = await axios.get(`${API_BASE_URL}/hitl_queue`);
+    setQaQueue(res.data);
+  };
+
+  const handleQaAction = async (task, action) => {
+    await axios.post(`${API_BASE_URL}/hitl_qa`, {
+      workflow_id: task.workflow_id,
+      step: task.step,
+      action,
+      edited_answer: qaEdit,
+      feedback: qaFeedback,
+      user
+    });
+    setQaActionStatus(`Action '${action}' submitted.`);
+    setQaEdit('');
+    setQaFeedback('');
+    fetchQaQueue();
+  };
+
   const handleLogin = () => {
     if (usernameInput.trim()) {
       setUser(usernameInput.trim());
@@ -83,6 +108,7 @@ function App() {
         <Tab label="Annotate" />
         <Tab label="Review" />
         <Tab label="History/Undo" />
+        <Tab label="LLM QA" />
       </Tabs>
       {tab === 0 && (
         <>
@@ -177,6 +203,28 @@ function App() {
               </TableBody>
             </Table>
           </TableContainer>
+        </Box>
+      )}
+      {tab === 3 && (
+        <Box>
+          <Typography variant="h6">LLM QA Queue</Typography>
+          {qaQueue.length === 0 && <Typography>No pending QA tasks.</Typography>}
+          {qaQueue.map((task, idx) => (
+            <Paper key={idx} style={{ margin: 16, padding: 16 }}>
+              <Typography><b>Question:</b> {task.question || task.llm_output?.question}</Typography>
+              <Typography><b>LLM Answer:</b> {task.llm_output?.answer}</Typography>
+              <Typography><b>Rationale:</b> {task.llm_output?.rationale}</Typography>
+              <Typography><b>Context:</b> <DialogContentText style={{ whiteSpace: 'pre-wrap' }}>{task.context}</DialogContentText></Typography>
+              <TextField label="Edit Answer" fullWidth multiline minRows={2} value={qaEdit} onChange={e => setQaEdit(e.target.value)} style={{ marginTop: 8 }} />
+              <TextField label="Feedback/Clarification" fullWidth multiline minRows={2} value={qaFeedback} onChange={e => setQaFeedback(e.target.value)} style={{ marginTop: 8 }} />
+              <Box style={{ marginTop: 8 }}>
+                <Button variant="contained" color="success" onClick={() => handleQaAction(task, 'approve')}>Approve</Button>
+                <Button variant="contained" color="warning" onClick={() => handleQaAction(task, 'edit')}>Edit & Approve</Button>
+                <Button variant="contained" color="error" onClick={() => handleQaAction(task, 'reject')}>Reject</Button>
+              </Box>
+            </Paper>
+          ))}
+          {qaActionStatus && <Alert severity="info" style={{ marginTop: 8 }}>{qaActionStatus}</Alert>}
         </Box>
       )}
       <Snackbar open={snackbar.open} autoHideDuration={3000} onClose={() => setSnackbar({ ...snackbar, open: false })}>
