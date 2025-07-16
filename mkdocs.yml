@@ -4,6 +4,8 @@ nav:
   - Architecture: architecture.md
   - Plugins: plugins.md
   - API Reference: api.md
+  - Python API: reference.md
+  - Plugin Reference: plugin_reference.md
   - Development: development.md
   - Contributing: contributing.md
 theme:
@@ -30,3 +32,11 @@ markdown_extensions:
   - pymdownx.highlight
   - pymdownx.inlinehilite
   - pymdownx.snippets
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_source: true
+            docstring_style: google
