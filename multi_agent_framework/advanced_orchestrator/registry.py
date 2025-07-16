@@ -50,6 +50,23 @@ class AgentRegistry:
         with self._lock:
             return [aid for aid, a in self._agents.items() if skill in a['skills']]
 
+    def register_edge_agent(self, agent_id, info, edge_location):
+        with self._lock:
+            self._agents[agent_id] = {
+                'info': info,
+                'last_heartbeat': time.time(),
+                'status': 'idle',
+                'skills': info.get('skills', []),
+                'load': 0,
+                'edge_location': edge_location
+            }
+            self.event_store.append_event('edge_agent_registered', {'agent_id': agent_id, 'info': info, 'edge_location': edge_location})
+            self._sync_to_peers('register_edge', agent_id, info)
+
+    def find_edge_agents(self, location=None):
+        with self._lock:
+            return [aid for aid, a in self._agents.items() if 'edge_location' in a and (location is None or a['edge_location'] == location)]
+
     def _sync_to_peers(self, action, agent_id, info=None):
         # Stub: In production, sync with etcd/Consul or federated registry API
         pass

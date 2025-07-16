@@ -7,8 +7,8 @@ class WorkflowEngine:
         self._workflows = {}
         self._lock = threading.Lock()
         self.event_store = event_store or EventStore()
-        # CQRS read model stub
         self._read_model = {}
+        self._hitl_approvals = {}  # workflow_id -> set of approved step ids
 
     def add_workflow(self, workflow_id, steps, dag=False):
         with self._lock:
@@ -24,6 +24,7 @@ class WorkflowEngine:
                 self._workflows[workflow_id] = steps
             self.event_store.append_event('workflow_added', {'workflow_id': workflow_id, 'steps': steps, 'dag': dag})
             self._update_read_model(workflow_id)
+            self._hitl_approvals[workflow_id] = set()
 
     def get_workflow(self, workflow_id):
         with self._lock:
@@ -33,13 +34,27 @@ class WorkflowEngine:
         wf = self.get_workflow(workflow_id)
         if isinstance(wf, nx.DiGraph):
             ready = [n for n in wf.nodes if all(dep in completed_steps for dep in wf.predecessors(n)) and n not in completed_steps]
+            # Filter out HITL steps not yet approved
+            ready = [n for n in ready if not self._is_hitl_step(wf, n) or n in self._hitl_approvals[workflow_id]]
             return ready
         else:
             for step in wf:
                 if step['id'] not in completed_steps:
+                    if self._is_hitl_step(step) and step['id'] not in self._hitl_approvals[workflow_id]:
+                        return []
                     return [step['id']]
             return []
 
+    def approve_hitl_step(self, workflow_id, step_id):
+        with self._lock:
+            self._hitl_approvals[workflow_id].add(step_id)
+            self.event_store.append_event('hitl_approved', {'workflow_id': workflow_id, 'step_id': step_id})
+
+    def _is_hitl_step(self, wf, step):
+        # For DAG, wf is nx.DiGraph; for chain, step is dict
+        if isinstance(wf, nx.DiGraph):
+            return wf.nodes[step].get('hitl', False)
+        return step.get('hitl', False)
+
     def _update_read_model(self, workflow_id):
-        # Stub: update CQRS read model
         self._read_model[workflow_id] = self._workflows[workflow_id]
