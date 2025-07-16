@@ -69,6 +69,15 @@ class ApiKey(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     revoked = Column(Integer, default=0)
 
+class AuditLog(Base):
+    __tablename__ = "audit_log"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=True)
+    username = Column(String, nullable=True)
+    action = Column(String, nullable=False)
+    details = Column(String, nullable=True)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="ReasoningAgent API")
@@ -251,6 +260,14 @@ class UserListResponse(BaseModel):
     is_admin: bool
     disabled: bool
 
+class AuditLogResponse(BaseModel):
+    id: int
+    user_id: int | None
+    username: str | None
+    action: str
+    details: str | None
+    timestamp: datetime
+
 # --- OAuth2 /token endpoint ---
 @app.post("/token", response_model=Token)
 def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
@@ -361,6 +378,7 @@ def create_apikey(admin: User = Depends(require_admin_user)):
     db.add(api_key)
     db.commit()
     db.refresh(api_key)
+    audit_log(admin, "create_apikey", f"id={api_key.id}")
     return ApiKeyCreateResponse(key=key, id=api_key.id, owner=admin.username, created_at=api_key.created_at)
 
 @app.get("/apikeys", response_model=list[ApiKeyListResponse])
@@ -385,6 +403,7 @@ def revoke_apikey(key_id: int, admin: User = Depends(require_admin_user)):
         raise HTTPException(status_code=404, detail="API key not found")
     key.revoked = 1
     db.commit()
+    audit_log(admin, "revoke_apikey", f"id={key_id}")
     return {"revoked": True, "id": key_id}
 
 @app.post("/users/register")
@@ -406,6 +425,7 @@ def register_user(req: UserRegisterRequest):
     db.add(user)
     db.commit()
     db.refresh(user)
+    audit_log(user, "register_user", f"id={user.id}")
     return {"id": user.id, "username": user.username, "is_admin": True}
 
 @app.get("/users", response_model=list[UserListResponse])
@@ -430,6 +450,7 @@ def disable_user(user_id: int, admin: User = Depends(require_admin_user)):
         raise HTTPException(status_code=404, detail="User not found")
     user.disabled = 1
     db.commit()
+    audit_log(admin, "disable_user", f"id={user_id}")
     return {"disabled": True, "id": user_id}
 
 @app.post("/users/{user_id}/enable")
@@ -440,6 +461,7 @@ def enable_user(user_id: int, admin: User = Depends(require_admin_user)):
         raise HTTPException(status_code=404, detail="User not found")
     user.disabled = 0
     db.commit()
+    audit_log(admin, "enable_user", f"id={user_id}")
     return {"enabled": True, "id": user_id}
 
 @app.post("/users/{user_id}/promote")
@@ -450,6 +472,7 @@ def promote_user(user_id: int, admin: User = Depends(require_admin_user)):
         raise HTTPException(status_code=404, detail="User not found")
     user.is_admin = 1
     db.commit()
+    audit_log(admin, "promote_user", f"id={user_id}")
     return {"promoted": True, "id": user_id}
 
 @app.post("/users/{user_id}/demote")
@@ -460,6 +483,7 @@ def demote_user(user_id: int, admin: User = Depends(require_admin_user)):
         raise HTTPException(status_code=404, detail="User not found")
     user.is_admin = 0
     db.commit()
+    audit_log(admin, "demote_user", f"id={user_id}")
     return {"demoted": True, "id": user_id}
 
 @app.get("/metrics")
@@ -482,6 +506,7 @@ def healthz():
 # - Async LLM tasks via Celery+Redis
 # - LLM plugin system: OpenAI, Hugging Face, extensible
 # - Ready for extension: user registration, roles, external IdP, etc.
+# - All admin/sensitive actions are logged to the audit log.
 
 from kg.sqlite_kg import SQLiteKG
 import json
@@ -509,11 +534,13 @@ class KGEdgeQueryRequest(BaseModel):
 @app.post("/kg/node/upsert")
 def upsert_kg_node(req: KGNodeUpsertRequest, auth=Depends(get_auth_user)):
     node_id = kg.upsert_node(req.label, json.dumps(req.properties))
+    audit_log(auth, "upsert_kg_node", f"id={node_id}")
     return {"id": node_id}
 
 @app.post("/kg/edge/upsert")
 def upsert_kg_edge(req: KGEdgeUpsertRequest, auth=Depends(get_auth_user)):
     edge_id = kg.upsert_edge(req.source, req.target, req.label, json.dumps(req.properties))
+    audit_log(auth, "upsert_kg_edge", f"id={edge_id}")
     return {"id": edge_id}
 
 @app.post("/kg/node/query")
@@ -529,3 +556,18 @@ def query_kg_edges(req: KGEdgeQueryRequest, auth=Depends(get_auth_user)):
     for e in edges:
         e["properties"] = json.loads(e["properties"] or "{}")
     return edges
+
+@app.get("/auditlog", response_model=list[AuditLogResponse])
+def get_audit_log(admin: User = Depends(require_admin_user)):
+    db = SessionLocal()
+    logs = db.query(AuditLog).order_by(AuditLog.timestamp.desc()).limit(200).all()
+    return [
+        AuditLogResponse(
+            id=l.id,
+            user_id=l.user_id,
+            username=l.username,
+            action=l.action,
+            details=l.details,
+            timestamp=l.timestamp
+        ) for l in logs
+    ]
