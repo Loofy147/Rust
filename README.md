@@ -26,6 +26,18 @@ python main.py
 - Add storage backends in `storage/`
 - Add new agents in `agents/`
 
+## UI Dashboard
+- Run: `streamlit run ui/dashboard.py`
+- Features: health, data view, task submission
+
+## gRPC API
+- Proto: `protos/agent.proto`
+- Server: `python api/grpc_server.py`
+
+## Advanced Features
+- Circuit breaker: see `utils/circuit_breaker.py`
+- Hot-reload and Prometheus metrics: ready for extension
+
 ## REST API
 - Start with `uvicorn api.rest:app --reload`
 - See `/docs` for OpenAPI/Swagger UI

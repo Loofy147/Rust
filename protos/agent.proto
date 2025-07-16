@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+service Agent {
+  rpc Health (HealthRequest) returns (HealthReply);
+  rpc GetData (DataRequest) returns (DataReply);
+}
+
+message HealthRequest {}
+message HealthReply {
+  string status = 1;
+}
+
+message DataRequest {}
+message DataReply {
+  repeated string data = 1;
+}
