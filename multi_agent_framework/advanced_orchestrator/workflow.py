@@ -9,6 +9,8 @@ class WorkflowEngine:
         self.event_store = event_store or EventStore()
         self._read_model = {}
         self._hitl_approvals = {}  # workflow_id -> set of approved step ids
+        self._memory = {}  # workflow_id -> {step_id: output}
+        self._feedback_log = {}  # workflow_id -> list of feedback dicts
 
     def add_workflow(self, workflow_id, steps, dag=False):
         with self._lock:
@@ -25,6 +27,8 @@ class WorkflowEngine:
             self.event_store.append_event('workflow_added', {'workflow_id': workflow_id, 'steps': steps, 'dag': dag})
             self._update_read_model(workflow_id)
             self._hitl_approvals[workflow_id] = set()
+            self._memory[workflow_id] = {}
+            self._feedback_log[workflow_id] = []
 
     def get_workflow(self, workflow_id):
         with self._lock:
@@ -49,6 +53,22 @@ class WorkflowEngine:
         with self._lock:
             self._hitl_approvals[workflow_id].add(step_id)
             self.event_store.append_event('hitl_approved', {'workflow_id': workflow_id, 'step_id': step_id})
+
+    def record_step_output(self, workflow_id, step_id, output):
+        with self._lock:
+            self._memory[workflow_id][step_id] = output
+
+    def get_memory(self, workflow_id):
+        with self._lock:
+            return dict(self._memory[workflow_id])
+
+    def log_feedback(self, workflow_id, step_id, feedback):
+        with self._lock:
+            self._feedback_log[workflow_id].append({'step_id': step_id, 'feedback': feedback})
+
+    def get_feedback_log(self, workflow_id):
+        with self._lock:
+            return list(self._feedback_log[workflow_id])
 
     def _is_hitl_step(self, wf, step):
         # For DAG, wf is nx.DiGraph; for chain, step is dict

@@ -1,17 +1,21 @@
-from advanced_orchestrator.registry import AgentRegistry
-import requests
+from agents.base import BaseAgent
 
-class RetrieverAgent:
-    def __init__(self, agent_id, registry: AgentRegistry):
-        self.agent_id = agent_id
-        self.registry = registry
-        self.skills = ["retrieval"]
-        self.registry.register(agent_id, {"skills": self.skills})
+class RetrieverAgent(BaseAgent):
+    def __init__(self, agent_id, registry):
+        super().__init__(agent_id, registry)
+        self.skills = ['retrieval']
+        # In production, connect to FAISS/Elastic/Pinecone
+        self.documents = [
+            {'id': 1, 'text': 'Domain knowledge about X.'},
+            {'id': 2, 'text': 'More info about Y.'},
+            {'id': 3, 'text': 'Details on Z.'}
+        ]
 
     def process(self, task):
-        # Retrieve data from a URL or API
-        url = task.get('url')
-        if url:
-            resp = requests.get(url)
-            return resp.text
-        return None
+        query = task.get('query')
+        # For demo: return all docs containing a keyword from query
+        results = [doc for doc in self.documents if any(word in doc['text'].lower() for word in query.lower().split())]
+        if not results:
+            results = self.documents[:1]
+        context = '\n'.join([doc['text'] for doc in results])
+        return {'context': context, 'docs': results}
