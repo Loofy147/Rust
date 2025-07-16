@@ -1,209 +1,145 @@
 from fastapi import FastAPI, Depends, HTTPException, Header, Body, Request
 import yaml
-from agents.registry import AgentRegistry
-from plugins.plugin_manager import PluginManager
-from main import agent_registry, plugin_manager, task_queue_agent
+from db.models import Node, Task
+from db.session import get_db
+from sqlalchemy.orm import Session
 import time
+import uuid
 
-# In-memory node registry and task assignment for demo
-NODES = {}
-NODE_TASKS = {}
-TASK_RESULTS = {}
+app = FastAPI()
 
 with open('config.yaml') as f:
     config = yaml.safe_load(f)
 
-storage = get_storage_backend(config['storage'])
-
-app = FastAPI()
-
-def check_auth(authorization: str = Header(...)):
-    if authorization != f"Bearer {config['api']['auth_token']}":
-        raise HTTPException(status_code=401, detail="Unauthorized")
-
-@app.get("/health")
-def health():
-    return {"status": "ok"}
-
-@app.get("/data", dependencies=[Depends(check_auth)])
-def get_data():
-    return storage.load()
-
-@app.post("/data", dependencies=[Depends(check_auth)])
-def add_data(item: dict):
-    storage.save(item)
-    return {"status": "saved"}
-
-@app.post("/vector_search", dependencies=[Depends(check_auth)])
-def vector_search(query: dict = Body(...)):
-    vector = query.get('vector')
-    k = query.get('k', 5)
-    if hasattr(storage, 'search'):
-        results = storage.search(vector, k)
-        return {"results": results}
-    return {"error": "Vector search not supported by current storage backend."}
-
-@app.get("/agents", dependencies=[Depends(check_auth)])
-def list_agents():
-    return agent_registry.all()
-
-@app.get("/plugins", dependencies=[Depends(check_auth)])
-def list_plugins():
-    return list(plugin_manager.plugins.keys())
-
-@app.post("/plugins/load", dependencies=[Depends(check_auth)])
-def load_plugin(payload: dict = Body(...)):
-    module = payload.get('module')
-    cls = payload.get('class')
-    plugin_manager.load_plugin(module, cls)
-    return {"status": "loaded", "plugin": cls}
-
-@app.post("/plugins/unload", dependencies=[Depends(check_auth)])
-def unload_plugin(payload: dict = Body(...)):
-    cls = payload.get('class')
-    plugin_manager.unload_plugin(cls)
-    return {"status": "unloaded", "plugin": cls}
-
-# Add: node capabilities and load in heartbeat, smart assignment, task rejection, and queued tasks
-QUEUED_TASKS = []
+# --- Node Endpoints ---
+@app.post("/agents/register")
+def register_node(payload: dict = Body(...), db: Session = Depends(get_db)):
+    node_id = payload.get('node_id')
+    node = db.query(Node).filter_by(node_id=node_id).first()
+    if not node:
+        node = Node(node_id=node_id, status='registered', last_seen=time.time(), capabilities={}, load=0)
+        db.add(node)
+    else:
+        node.status = 'registered'
+        node.last_seen = time.time()
+    db.commit()
+    return {"status": "registered", "node_id": node_id}
 
 @app.post("/agents/heartbeat")
-def node_heartbeat(payload: dict = Body(...)):
+def node_heartbeat(payload: dict = Body(...), db: Session = Depends(get_db)):
     node_id = payload.get('node_id')
     capabilities = payload.get('capabilities', {})
     load = payload.get('load', 0)
-    if node_id in NODES:
-        NODES[node_id]['last_seen'] = time.time()
-        NODES[node_id]['status'] = 'alive'
-        NODES[node_id]['capabilities'] = capabilities
-        NODES[node_id]['load'] = load
+    node = db.query(Node).filter_by(node_id=node_id).first()
+    if node:
+        node.last_seen = time.time()
+        node.status = 'alive'
+        node.capabilities = capabilities
+        node.load = load
+        db.commit()
         return {"status": "heartbeat", "node_id": node_id}
     return {"error": "Node not registered"}
 
-# Advanced task status tracking and reassignment
-TASK_STATUS = {}  # task_id -> {status, node_id, timestamps, ...}
-TASK_TIMEOUT = 30  # seconds
+@app.get("/agents/nodes")
+def list_nodes(db: Session = Depends(get_db)):
+    now = time.time()
+    nodes = db.query(Node).all()
+    return {n.node_id: {"status": n.status, "capabilities": n.capabilities, "load": n.load, "last_seen_delta": now-n.last_seen} for n in nodes}
 
+@app.post("/agents/deregister")
+def deregister_node(payload: dict = Body(...), db: Session = Depends(get_db)):
+    node_id = payload.get('node_id')
+    node = db.query(Node).filter_by(node_id=node_id).first()
+    if node:
+        db.delete(node)
+        db.commit()
+        return {"status": "deregistered", "node_id": node_id}
+    return {"error": "Node not found"}
+
+# --- Task Endpoints ---
 @app.post("/tasks/submit")
-def submit_task(payload: dict = Body(...)):
-    # Assign unique task_id
-    import uuid, time as t
+def submit_task(payload: dict = Body(...), db: Session = Depends(get_db)):
     task_id = payload.get('id') or str(uuid.uuid4())
     payload['id'] = task_id
-    payload['submitted_at'] = t.time()
+    payload['submitted_at'] = time.time()
     payload['status'] = 'queued'
-    TASK_STATUS[task_id] = {'status': 'queued', 'submitted_at': payload['submitted_at'], 'task': payload}
-    # Smart assignment based on capabilities and load
+    task = Task(id=task_id, status='queued', node_id=None, payload=payload, submitted_at=payload['submitted_at'], assigned_at=None, completed_at=None, result=None)
+    db.add(task)
+    db.commit()
+    # Smart assignment
     required = payload.get('required', {})
     best_node = None
     best_load = float('inf')
-    now = t.time()
-    for node_id, info in NODES.items():
-        if now - info['last_seen'] > 15:
-            continue  # skip dead nodes
-        caps = info.get('capabilities', {})
+    now = time.time()
+    for node in db.query(Node).all():
+        if now - node.last_seen > 15:
+            continue
+        caps = node.capabilities or {}
         if all(caps.get(k) == v for k, v in required.items()):
-            node_load = info.get('load', 0)
-            if node_load < best_load:
-                best_node = node_id
-                best_load = node_load
+            if node.load < best_load:
+                best_node = node.node_id
+                best_load = node.load
     if best_node:
-        if best_node not in NODE_TASKS:
-            NODE_TASKS[best_node] = []
-        NODE_TASKS[best_node].append(payload)
-        TASK_STATUS[task_id]['status'] = 'assigned'
-        TASK_STATUS[task_id]['node_id'] = best_node
-        TASK_STATUS[task_id]['assigned_at'] = now
+        task.status = 'assigned'
+        task.node_id = best_node
+        task.assigned_at = now
+        db.commit()
         return {"status": "assigned", "node_id": best_node, "task": payload, "task_id": task_id}
     else:
-        QUEUED_TASKS.append(payload)
         return {"status": "queued", "reason": "no suitable node", "task": payload, "task_id": task_id}
 
 @app.get("/tasks/status/{task_id}")
-def get_task_status_api(task_id: str):
-    return TASK_STATUS.get(task_id, {})
+def get_task_status_api(task_id: str, db: Session = Depends(get_db)):
+    task = db.query(Task).filter_by(id=task_id).first()
+    if not task:
+        return {}
+    return {"status": task.status, "node_id": task.node_id, "result": task.result, "payload": task.payload}
 
 @app.post("/tasks/result")
-def report_result(payload: dict = Body(...)):
+def report_result(payload: dict = Body(...), db: Session = Depends(get_db)):
     node_id = payload.get('node_id')
     task_id = payload.get('task_id')
     result = payload.get('result')
     now = time.time()
-    if task_id in TASK_STATUS:
-        TASK_STATUS[task_id]['status'] = 'done'
-        TASK_STATUS[task_id]['result'] = result
-        TASK_STATUS[task_id]['completed_at'] = now
-    TASK_RESULTS[task_id] = {'node_id': node_id, 'result': result, 'timestamp': now}
+    task = db.query(Task).filter_by(id=task_id).first()
+    if task:
+        task.status = 'done'
+        task.result = result
+        task.completed_at = now
+        db.commit()
     return {"status": "result_received", "task_id": task_id}
 
 @app.post("/tasks/reject")
-def reject_task(payload: dict = Body(...)):
+def reject_task(payload: dict = Body(...), db: Session = Depends(get_db)):
     task = payload.get('task')
     task_id = task.get('id')
-    QUEUED_TASKS.append(task)
-    if task_id in TASK_STATUS:
-        TASK_STATUS[task_id]['status'] = 'queued'
-        TASK_STATUS[task_id]['node_id'] = None
+    t = db.query(Task).filter_by(id=task_id).first()
+    if t:
+        t.status = 'queued'
+        t.node_id = None
+        db.commit()
     return {"status": "requeued", "task": task}
 
 @app.get("/tasks/queued")
-def get_queued_tasks():
-    # Reassign timed-out tasks
+def get_queued_tasks(db: Session = Depends(get_db)):
     now = time.time()
-    for tid, info in list(TASK_STATUS.items()):
-        if info['status'] == 'assigned' and now - info.get('assigned_at', 0) > TASK_TIMEOUT:
-            info['status'] = 'queued'
-            info['node_id'] = None
-            QUEUED_TASKS.append(info['task'])
-    return QUEUED_TASKS
+    timeout = 30
+    queued = []
+    for t in db.query(Task).filter_by(status='queued'):
+        queued.append(t.payload)
+    # Reassign timed-out tasks
+    for t in db.query(Task).filter_by(status='assigned'):
+        if now - (t.assigned_at or 0) > timeout:
+            t.status = 'queued'
+            t.node_id = None
+            db.commit()
+            queued.append(t.payload)
+    return queued
 
 @app.get("/tasks/in_progress")
-def get_in_progress_tasks():
-    return {tid: info for tid, info in TASK_STATUS.items() if info['status'] == 'assigned'}
-
-@app.post("/agents/register")
-def register_node(payload: dict = Body(...)):
-    node_id = payload.get('node_id')
-    NODES[node_id] = {'last_seen': time.time(), 'status': 'registered'}
-    return {"status": "registered", "node_id": node_id}
-
-@app.get("/agents/nodes")
-def list_nodes():
-    # Add last_seen delta for UI
-    now = time.time()
-    return {nid: {**info, 'last_seen_delta': now-info['last_seen']} for nid, info in NODES.items()}
-
-@app.post("/tasks/assign")
-def assign_task(payload: dict = Body(...)):
-    node_id = payload.get('node_id')
-    task = payload.get('task')
-    if node_id not in NODE_TASKS:
-        NODE_TASKS[node_id] = []
-    NODE_TASKS[node_id].append(task)
-    return {"status": "assigned", "node_id": node_id, "task": task}
-
-@app.get("/tasks/poll/{node_id}")
-def poll_tasks(node_id: str):
-    tasks = NODE_TASKS.get(node_id, [])
-    NODE_TASKS[node_id] = []
-    return {"tasks": tasks}
-
-@app.post("/tasks/result")
-def report_result(payload: dict = Body(...)):
-    node_id = payload.get('node_id')
-    task_id = payload.get('task_id')
-    result = payload.get('result')
-    TASK_RESULTS[task_id] = {'node_id': node_id, 'result': result, 'timestamp': time.time()}
-    return {"status": "result_received", "task_id": task_id}
+def get_in_progress_tasks(db: Session = Depends(get_db)):
+    return {t.id: {"status": t.status, "node_id": t.node_id, "payload": t.payload} for t in db.query(Task).filter_by(status='assigned')}
 
 @app.get("/tasks/results")
-def get_all_results():
-    return TASK_RESULTS
-
-@app.post("/agents/deregister")
-def deregister_node(payload: dict = Body(...)):
-    node_id = payload.get('node_id')
-    if node_id in NODES:
-        del NODES[node_id]
-        return {"status": "deregistered", "node_id": node_id}
-    return {"error": "Node not found"}
+def get_all_results(db: Session = Depends(get_db)):
+    return {t.id: {"result": t.result, "node_id": t.node_id, "payload": t.payload} for t in db.query(Task).filter_by(status='done')}
