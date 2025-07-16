@@ -1,5 +1,7 @@
 # ReasoningAgent
 
+[![Test Coverage](https://img.shields.io/badge/coverage-unknown-lightgrey)](https://github.com/)
+
 A modular, production-ready agent system with plugin interfaces for LLM, KG, vector store, and metrics. Includes REST API for task injection and status, and robust error handling.
 
 ## Features
@@ -9,6 +11,14 @@ A modular, production-ready agent system with plugin interfaces for LLM, KG, vec
 - Persistence for KG and vectors
 - Observability and metrics
 - Secure API key authentication
+
+## Development Workflow
+- Use the provided dev container or set up Python 3.10+ locally
+- Install dependencies: `pip install -r requirements.txt`
+- Install pre-commit hooks: `pre-commit install`
+- Run tests: `pytest`
+- Check types: `mypy .`
+- Format code: `black . && isort .`
 
 ## Setup
 1. Clone the repo
