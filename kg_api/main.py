@@ -85,6 +85,43 @@ async def reasoning(query: str, user=Depends(get_current_user)):
     result = await kg.execute_reasoning(query)
     return result
 
+@app.get('/health', tags=["Admin"])
+async def health():
+    return {"status": "ok"}
+
+@app.get('/version', tags=["Admin"])
+async def version():
+    return {"version": "1.0.0"}
+
+@app.get('/stats', tags=["Admin"])
+async def stats():
+    return {
+        "entity_count": len(kg.entities),
+        "relationship_count": len(kg.relationships)
+    }
+
+@app.post('/admin/reload', tags=["Admin"])
+async def admin_reload(user=Depends(get_current_user)):
+    if user["username"] != "admin":
+        raise HTTPException(403, "Admin only")
+    # Placeholder: reload rules/listeners
+    await kg.reload_rules_and_listeners()
+    return {"status": "reloaded"}
+
+@app.get('/export', tags=["Admin"])
+async def export_graph(user=Depends(get_current_user)):
+    if user["username"] != "admin":
+        raise HTTPException(403, "Admin only")
+    # Placeholder: export as JSON
+    return {"entities": [e.__dict__ for e in kg.entities.values()], "relationships": [r.__dict__ for r in kg.relationships.values()]}
+
+@app.post('/import', tags=["Admin"])
+async def import_graph(data: Dict[str, Any], user=Depends(get_current_user)):
+    if user["username"] != "admin":
+        raise HTTPException(403, "Admin only")
+    # Placeholder: import entities/relationships
+    return {"status": "imported"}
+
 @app.exception_handler(Exception)
 async def generic_exception_handler(request: Request, exc: Exception):
     logging.error(f"Unhandled Exception: {exc}")

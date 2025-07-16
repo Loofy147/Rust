@@ -9,6 +9,7 @@ A secure, async FastAPI service for advanced knowledge graph management and reas
 - Rate limiting
 - Prometheus metrics
 - OpenAPI docs
+- Admin endpoints (health, stats, reload, export/import)
 
 ## Getting Started
 
@@ -58,16 +59,59 @@ curl -X POST http://localhost:8000/relationships \
   -d '{"source_id": "...", "target_id": "...", "type": "DEPENDS_ON"}'
 ```
 
-### Query Entities
+### Query Entities (with Pagination/Filtering)
 ```bash
-curl -X GET "http://localhost:8000/entities?type=CONCEPT&name=Test" \
+curl -X GET "http://localhost:8000/entities?type=CONCEPT&name=Test&limit=10&offset=0" \
   -H "Authorization: Bearer <JWT>"
 ```
 
-### Reasoning Endpoint
+### Reasoning with Context and Trace
 ```bash
-curl -X GET "http://localhost:8000/reasoning?query=..." \
+curl -X GET "http://localhost:8000/reasoning?query=explain+decision&trace=1" \
   -H "Authorization: Bearer <JWT>"
+```
+
+### Error Handling Example (Invalid Entity)
+```bash
+curl -X GET http://localhost:8000/entities/invalid_id \
+  -H "Authorization: Bearer <JWT>"
+# Response: {"error": {"code": 404, "message": "Entity not found"}}
+```
+
+### Rate Limit Example
+```bash
+# Exceeding rate limit returns 429
+curl -X GET http://localhost:8000/entities/<entity_id> \
+  -H "Authorization: Bearer <JWT>"
+# Response: {"error": {"code": 429, "message": "Rate limit exceeded"}}
+```
+
+### Health Check
+```bash
+curl http://localhost:8000/health
+```
+
+### Stats
+```bash
+curl http://localhost:8000/stats
+```
+
+## Python Client Example
+```python
+import requests
+
+API = "http://localhost:8000"
+# Login
+resp = requests.post(f"{API}/token", data={"username": "admin", "password": "adminpass"})
+token = resp.json()["access_token"]
+headers = {"Authorization": f"Bearer {token}"}
+# Add entity
+entity = {"type": "CONCEPT", "name": "PyClient", "properties": {}}
+resp = requests.post(f"{API}/entities", json=entity, headers=headers)
+eid = resp.json()["id"]
+# Get entity
+resp = requests.get(f"{API}/entities/{eid}", headers=headers)
+print(resp.json())
 ```
 
 ## Metrics
