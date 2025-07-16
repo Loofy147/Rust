@@ -11,6 +11,12 @@ st.header("Nodes/Agents")
 if st.button("Refresh Nodes"):
     nodes = requests.get(f"{API_URL}/agents/nodes").json()
     st.write(nodes)
+    for nid, info in nodes.items():
+        st.write(f"Node: {nid}")
+        st.write(f"  Status: {info.get('status')}")
+        st.write(f"  Capabilities: {info.get('capabilities', {})}")
+        st.write(f"  Load: {info.get('load', 0)}")
+        st.write(f"  Last seen: {info.get('last_seen_delta', 0):.1f}s ago")
 
 # --- Plugins ---
 st.header("Plugins")
@@ -38,6 +44,12 @@ st.header("Tasks")
 if st.button("Show All Results"):
     results = requests.get(f"{API_URL}/tasks/results").json()
     st.write(results)
+
+# --- Queued Tasks ---
+st.header("Queued Tasks")
+if st.button("Show Queued Tasks"):
+    queued = requests.get(f"{API_URL}/tasks/queued").json()
+    st.write(queued)
 
 with st.form("Assign Task"):
     node_id = st.text_input("Node ID", "node-1")

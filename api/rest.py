@@ -64,11 +64,56 @@ def unload_plugin(payload: dict = Body(...)):
     plugin_manager.unload_plugin(cls)
     return {"status": "unloaded", "plugin": cls}
 
-@app.post("/tasks", dependencies=[Depends(check_auth)])
+# Add: node capabilities and load in heartbeat, smart assignment, task rejection, and queued tasks
+QUEUED_TASKS = []
+
+@app.post("/agents/heartbeat")
+def node_heartbeat(payload: dict = Body(...)):
+    node_id = payload.get('node_id')
+    capabilities = payload.get('capabilities', {})
+    load = payload.get('load', 0)
+    if node_id in NODES:
+        NODES[node_id]['last_seen'] = time.time()
+        NODES[node_id]['status'] = 'alive'
+        NODES[node_id]['capabilities'] = capabilities
+        NODES[node_id]['load'] = load
+        return {"status": "heartbeat", "node_id": node_id}
+    return {"error": "Node not registered"}
+
+@app.post("/tasks/submit")
 def submit_task(payload: dict = Body(...)):
-    priority = payload.get('priority', 10)
-    task_id = task_queue_agent.add_task(payload, priority)
-    return {"status": "submitted", "task_id": task_id}
+    # Smart assignment based on capabilities and load
+    required = payload.get('required', {})
+    best_node = None
+    best_load = float('inf')
+    now = time.time()
+    for node_id, info in NODES.items():
+        if now - info['last_seen'] > 15:
+            continue  # skip dead nodes
+        caps = info.get('capabilities', {})
+        if all(caps.get(k) == v for k, v in required.items()):
+            node_load = info.get('load', 0)
+            if node_load < best_load:
+                best_node = node_id
+                best_load = node_load
+    if best_node:
+        if best_node not in NODE_TASKS:
+            NODE_TASKS[best_node] = []
+        NODE_TASKS[best_node].append(payload)
+        return {"status": "assigned", "node_id": best_node, "task": payload}
+    else:
+        QUEUED_TASKS.append(payload)
+        return {"status": "queued", "reason": "no suitable node", "task": payload}
+
+@app.post("/tasks/reject")
+def reject_task(payload: dict = Body(...)):
+    task = payload.get('task')
+    QUEUED_TASKS.append(task)
+    return {"status": "requeued", "task": task}
+
+@app.get("/tasks/queued")
+def get_queued_tasks():
+    return QUEUED_TASKS
 
 @app.get("/tasks/{task_id}", dependencies=[Depends(check_auth)])
 def get_task_status(task_id: int):
@@ -79,15 +124,6 @@ def register_node(payload: dict = Body(...)):
     node_id = payload.get('node_id')
     NODES[node_id] = {'last_seen': time.time(), 'status': 'registered'}
     return {"status": "registered", "node_id": node_id}
-
-@app.post("/agents/heartbeat")
-def node_heartbeat(payload: dict = Body(...)):
-    node_id = payload.get('node_id')
-    if node_id in NODES:
-        NODES[node_id]['last_seen'] = time.time()
-        NODES[node_id]['status'] = 'alive'
-        return {"status": "heartbeat", "node_id": node_id}
-    return {"error": "Node not registered"}
 
 @app.get("/agents/nodes")
 def list_nodes():
