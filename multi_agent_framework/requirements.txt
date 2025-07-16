@@ -5,3 +5,5 @@ sentence-transformers
 requests
 fastapi
 uvicorn
+beautifulsoup4
+openai
