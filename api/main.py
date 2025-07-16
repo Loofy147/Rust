@@ -213,9 +213,12 @@ class TaskRequest(BaseModel):
     max_tokens: int = 256
     temperature: float = 0.7
     provider: str = Query("openai", description="LLM provider: openai or huggingface")
+    context: str | None = None
+    context_k: int = 3
 
 class TaskResponse(BaseModel):
     task_id: str
+    context: str | None = None
 
 class ResultResponse(BaseModel):
     answer: str | None = None
@@ -314,16 +317,24 @@ async def submit_task(
     auth=Depends(get_auth_user),
     request: Request = None
 ):
-    # Enqueue async LLM task
+    # RAG: If no context provided, query vector store for top-k
+    context = req.context
+    if not context:
+        results = vector_store.query(req.prompt, req.context_k)
+        context_chunks = [doc for doc in results.get("documents", [[]])[0]]
+        context = "\n".join(context_chunks)
+    # Inject context into prompt
+    full_prompt = f"Context:\n{context}\n\nUser Prompt:\n{req.prompt}" if context else req.prompt
     LLM_CALLS.labels(req.model).inc()
     x_api_key = auth if isinstance(auth, str) else None
     check_quota(auth, x_api_key)
+    # Pass full_prompt to worker
     task = celery.send_task(
         "api.worker.llm_task",
-        args=[req.prompt, req.model, req.max_tokens, req.temperature, x_api_key, req.provider],
+        args=[full_prompt, req.model, req.max_tokens, req.temperature, x_api_key, req.provider],
     )
     increment_usage(auth, x_api_key)
-    return TaskResponse(task_id=task.id)
+    return TaskResponse(task_id=task.id, context=context)
 
 @app.get("/result/{task_id}", response_model=ResultResponse)
 @limiter.limit(get_rate_limit())
