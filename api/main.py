@@ -1,4 +1,6 @@
 from fastapi import FastAPI, HTTPException, Depends, WebSocket, WebSocketDisconnect, Request
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 from api.schemas import TaskRequest, TaskResult
 from api.auth import get_current_user, authenticate_user, create_access_token
 from uuid import uuid4
@@ -11,6 +13,7 @@ from celery_worker import process_task_celery, celery_app
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+import traceback
 
 # OpenTelemetry tracing
 if os.getenv("OTEL_ENABLED", "0") == "1":
@@ -28,6 +31,22 @@ app = FastAPI()
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 Instrumentator().instrument(app).expose(app)
+
+# --- Global error handlers ---
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    logger.error(f"HTTPException: {exc.detail} | Path: {request.url}")
+    return JSONResponse(status_code=exc.status_code, content={"error": {"code": exc.status_code, "message": exc.detail}})
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    logger.error(f"ValidationError: {exc.errors()} | Path: {request.url}")
+    return JSONResponse(status_code=422, content={"error": {"code": 422, "message": "Validation error", "details": exc.errors()}})
+
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled Exception: {exc} | Path: {request.url}\n{traceback.format_exc()}")
+    return JSONResponse(status_code=500, content={"error": {"code": 500, "message": "Internal server error"}})
 
 if os.getenv("OTEL_ENABLED", "0") == "1":
     FastAPIInstrumentor.instrument_app(app)
