@@ -96,7 +96,11 @@ class AttentionDataConsistencyManager:
                 logger.error(f"Callback for event '{event}' failed: {e}")
     
     def register_tensor(self, tensor_id: str, tensor: torch.Tensor) -> AttentionTensorMetadata:
-        """Register tensor with comprehensive metadata tracking"""
+        """Register tensor with comprehensive metadata tracking and validation"""
+        if not isinstance(tensor, torch.Tensor):
+            raise TypeError(f"Tensor for {tensor_id} must be a torch.Tensor, got {type(tensor)}")
+        if tensor.numel() == 0:
+            raise ValueError(f"Tensor for {tensor_id} is empty.")
         with self.consistency_locks[tensor_id]:
             metadata = AttentionTensorMetadata(
                 tensor_id=tensor_id,
@@ -111,7 +115,6 @@ class AttentionDataConsistencyManager:
             metadata.update_checksum(tensor)
             self.tensor_registry[tensor_id] = metadata
             self.version_vectors[tensor_id] = 0
-            
             logger.info(f"Registered attention tensor {tensor_id} with metadata")
             return metadata
     
@@ -167,20 +170,22 @@ class AttentionWeightUpdateOrchestrator:
     def execute_update(self, tensor_id: str, tensor: torch.Tensor, 
                       update_type: Union[AttentionUpdateType, str], 
                       update_params: Dict[str, Any]) -> torch.Tensor:
-        """Execute sophisticated attention weight updates with consistency validation"""
-        
+        """Execute sophisticated attention weight updates with consistency validation and shape/type validation"""
         # Validate consistency before update
         expected_version = self.consistency_manager.version_vectors[tensor_id]
         if not self.consistency_manager.validate_consistency(tensor_id, expected_version):
             raise RuntimeError(f"Consistency validation failed for tensor {tensor_id}")
-        
+        # Validate tensor shape/type
+        metadata = self.consistency_manager.tensor_registry[tensor_id]
+        if tensor.shape != metadata.shape:
+            raise ValueError(f"Shape mismatch for {tensor_id}: expected {metadata.shape}, got {tensor.shape}")
+        if tensor.dtype != metadata.dtype:
+            raise TypeError(f"Dtype mismatch for {tensor_id}: expected {metadata.dtype}, got {tensor.dtype}")
         # Execute update strategy
         update_strategy = self.update_strategies[update_type]
         updated_tensor = update_strategy(tensor_id, tensor, update_params)
-        
         # Update metadata and version
         with self.consistency_manager.consistency_locks[tensor_id]:
-            metadata = self.consistency_manager.tensor_registry[tensor_id]
             metadata.update_checksum(updated_tensor)
             metadata.optimization_history.append({
                 'update_type': str(update_type),
@@ -188,7 +193,6 @@ class AttentionWeightUpdateOrchestrator:
                 'timestamp': time.time()
             })
             self.consistency_manager.version_vectors[tensor_id] += 1
-            
         logger.info(f"Executed {update_type} update for tensor {tensor_id}")
         return updated_tensor
     
@@ -491,6 +495,18 @@ class MultiHeadAttentionDataAgent:
         self.performance_metrics = state.get("performance_metrics", self.performance_metrics)
         logger.info(f"Agent state loaded from {filepath}")
 
+    def register_tensors(self, tensor_dict: Dict[str, torch.Tensor]):
+        """Batch register multiple tensors with validation."""
+        for tensor_id, tensor in tensor_dict.items():
+            self.consistency_manager.register_tensor(tensor_id, tensor)
+        logger.info(f"Batch registered {len(tensor_dict)} tensors.")
+
+    def update_attention_weights_batch(self, head_ids: List[int], update_type: Union[AttentionUpdateType, str], update_params: Dict[str, Any]):
+        """Batch update attention weights for multiple heads."""
+        for head_id in head_ids:
+            self.update_attention_weights(head_id, update_type, update_params)
+        logger.info(f"Batch updated attention weights for heads: {head_ids}")
+
 # Example usage and demonstration
 if __name__ == "__main__":
     # Initialize the attention data agent
@@ -540,3 +556,10 @@ if __name__ == "__main__":
         print(f"[Callback] Consistency violation: {violation}")
     agent.register_callback('after_update', on_update)
     agent.consistency_manager.register_callback('consistency_violation', on_violation)
+
+    # Batch operations demo
+    # Batch register (redundant here, but for demonstration)
+    agent.register_tensors({k: v for k, v in agent.attention_weights.items()})
+    # Batch update
+    agent.update_attention_weights_batch([0, 1], AttentionUpdateType.WEIGHT_DECAY, {'decay_rate': 0.0002})
+    print("Batch operations successful.")
