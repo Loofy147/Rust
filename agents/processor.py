@@ -22,6 +22,18 @@ class ProcessorAgent:
         # Add HuggingFace or other providers as needed
         return "[LLM response placeholder]"
 
+    def process_task(self, task):
+        text = task.get('text', '')
+        # Preprocess
+        tokens = self.plugin_manager.run('tokenizer', text)
+        norm = self.plugin_manager.run('normalizer', text)
+        vector = self.plugin_manager.run('vectorizer', norm or text)
+        # LLM processing
+        llm_result = self.call_llm(text)
+        # Store result
+        self.storage.save({'input': text, 'tokens': tokens, 'norm': norm, 'vector': vector, 'llm': llm_result})
+        logging.info(f"Processed task: {text}")
+
     def run(self):
         while self.running:
             # Placeholder: get task from queue

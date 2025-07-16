@@ -10,15 +10,22 @@ llm:
   endpoint: ""
 
 storage:
-  type: file  # or vector_db
-  file_path: "data/kg_vectors.pkl"
+  type: vector_db
+  dim: 384
 
 plugins:
   enabled:
     - tokenizer
+    - normalizer
+    - vectorizer
   tokenizer:
     type: default
     config: {}
+  normalizer:
+    type: default
+    config: {}
+  vectorizer:
+    model: all-MiniLM-L6-v2
 
 api:
   host: 0.0.0.0

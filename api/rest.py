@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, Header
+from fastapi import FastAPI, Depends, HTTPException, Header, Body
 from storage.base import get_storage_backend
 import yaml
 
@@ -25,3 +25,12 @@ def get_data():
 def add_data(item: dict):
     storage.save(item)
     return {"status": "saved"}
+
+@app.post("/vector_search", dependencies=[Depends(check_auth)])
+def vector_search(query: dict = Body(...)):
+    vector = query.get('vector')
+    k = query.get('k', 5)
+    if hasattr(storage, 'search'):
+        results = storage.search(vector, k)
+        return {"results": results}
+    return {"error": "Vector search not supported by current storage backend."}
