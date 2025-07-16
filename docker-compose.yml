@@ -1,0 +1,51 @@
+version: '3.8'
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: agentsys
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/agentsys
+    depends_on:
+      - db
+    ports:
+      - "8000:8000"
+    command: ["uvicorn", "api.rest:app", "--host", "0.0.0.0", "--port", "8000"]
+
+  dashboard:
+    build: .
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/agentsys
+    depends_on:
+      - api
+    ports:
+      - "8501:8501"
+    command: ["streamlit", "run", "ui/distributed_dashboard.py", "--server.port=8501", "--server.address=0.0.0.0"]
+
+  node:
+    build: .
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/agentsys
+    depends_on:
+      - api
+    command: ["python", "distributed_node.py", "node-1"]
+
+  auto-scaler:
+    build: .
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/agentsys
+    depends_on:
+      - api
+    command: ["python", "auto_scaler.py"]
+
+volumes:
+  pgdata:
