@@ -12,6 +12,8 @@ from passlib.context import CryptContext
 from llm_plugins import get_plugin, list_plugins
 from vector_store.chroma_store import ChromaVectorStore
 import uuid
+from hashlib import sha256
+import secrets
 
 # --- Rate limiting ---
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -46,6 +48,7 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     full_name = Column(String, nullable=True)
     disabled = Column(Integer, default=0)
+    is_admin = Column(Integer, default=0)  # 1 for admin, 0 for regular
 
 class TaskRecord(Base):
     __tablename__ = "tasks"
@@ -57,6 +60,14 @@ class TaskRecord(Base):
     answer = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     api_key = Column(String, nullable=True)
+
+class ApiKey(Base):
+    __tablename__ = "api_keys"
+    id = Column(Integer, primary_key=True, index=True)
+    key_hash = Column(String, unique=True, index=True, nullable=False)
+    owner_id = Column(Integer, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    revoked = Column(Integer, default=0)
 
 Base.metadata.create_all(bind=engine)
 
@@ -136,15 +147,23 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         raise credentials_exception
     return user
 
+def require_admin_user(user: User = Depends(get_current_user)):
+    if not user or not getattr(user, "is_admin", False):
+        raise HTTPException(status_code=403, detail="Admin privileges required")
+    return user
+
 # --- API Key Auth ---
 def get_api_keys():
     keys = os.environ.get("API_KEYS", "testkey").split(",")
     return set(k.strip() for k in keys if k.strip())
 
-async def verify_api_key(x_api_key: str = Header(None)):
+def verify_api_key_db(x_api_key: str = Header(None)):
     if x_api_key is None:
         return None
-    if x_api_key not in get_api_keys():
+    db = SessionLocal()
+    key_hash = sha256(x_api_key.encode()).hexdigest()
+    key = db.query(ApiKey).filter(ApiKey.key_hash == key_hash, ApiKey.revoked == 0).first()
+    if not key:
         raise HTTPException(status_code=401, detail="Invalid or missing API key.")
     return x_api_key
 
@@ -208,6 +227,18 @@ class VectorQueryRequest(BaseModel):
     text: str
     top_k: int = 5
 
+class ApiKeyCreateResponse(BaseModel):
+    key: str
+    id: int
+    owner: str
+    created_at: datetime
+
+class ApiKeyListResponse(BaseModel):
+    id: int
+    owner: str
+    created_at: datetime
+    revoked: bool
+
 # --- OAuth2 /token endpoint ---
 @app.post("/token", response_model=Token)
 def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
@@ -225,7 +256,7 @@ def list_llm_models():
 
 # --- Endpoints ---
 def get_auth_user(
-    x_api_key: str = Depends(verify_api_key),
+    x_api_key: str = Depends(verify_api_key_db),
     user: User = Depends(get_current_user)
 ):
     # Allow either valid API key or valid JWT
@@ -307,6 +338,42 @@ def upsert_vector(req: VectorUpsertRequest, auth=Depends(get_auth_user)):
 def query_vector(req: VectorQueryRequest, auth=Depends(get_auth_user)):
     results = vector_store.query(req.text, req.top_k)
     return results
+
+@app.post("/apikeys", response_model=ApiKeyCreateResponse)
+def create_apikey(admin: User = Depends(require_admin_user)):
+    # Generate a secure random key
+    key = secrets.token_urlsafe(32)
+    key_hash = sha256(key.encode()).hexdigest()
+    db = SessionLocal()
+    api_key = ApiKey(key_hash=key_hash, owner_id=admin.id)
+    db.add(api_key)
+    db.commit()
+    db.refresh(api_key)
+    return ApiKeyCreateResponse(key=key, id=api_key.id, owner=admin.username, created_at=api_key.created_at)
+
+@app.get("/apikeys", response_model=list[ApiKeyListResponse])
+def list_apikeys(admin: User = Depends(require_admin_user)):
+    db = SessionLocal()
+    keys = db.query(ApiKey).all()
+    users = {u.id: u.username for u in db.query(User).all()}
+    return [
+        ApiKeyListResponse(
+            id=k.id,
+            owner=users.get(k.owner_id, "unknown"),
+            created_at=k.created_at,
+            revoked=bool(k.revoked)
+        ) for k in keys
+    ]
+
+@app.delete("/apikeys/{key_id}")
+def revoke_apikey(key_id: int, admin: User = Depends(require_admin_user)):
+    db = SessionLocal()
+    key = db.query(ApiKey).filter(ApiKey.id == key_id).first()
+    if not key:
+        raise HTTPException(status_code=404, detail="API key not found")
+    key.revoked = 1
+    db.commit()
+    return {"revoked": True, "id": key_id}
 
 @app.get("/metrics")
 @limiter.limit(get_rate_limit())
