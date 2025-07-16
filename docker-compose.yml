@@ -8,5 +8,12 @@ services:
       - API_KEY=your-secret-key
       - OPENAI_API_KEY=sk-test
       - DB_URL=sqlite:///kg.db
+      - CELERY_BROKER_URL=redis://redis:6379/0
     volumes:
       - .:/app
+    depends_on:
+      - redis
+  redis:
+    image: redis:6-alpine
+    ports:
+      - "6379:6379"

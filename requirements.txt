@@ -8,3 +8,5 @@ chromadb
 pytest
 prometheus_fastapi_instrumentator
 loguru
+celery
+redis
