@@ -157,3 +157,11 @@ def report_result(payload: dict = Body(...)):
 @app.get("/tasks/results")
 def get_all_results():
     return TASK_RESULTS
+
+@app.post("/agents/deregister")
+def deregister_node(payload: dict = Body(...)):
+    node_id = payload.get('node_id')
+    if node_id in NODES:
+        del NODES[node_id]
+        return {"status": "deregistered", "node_id": node_id}
+    return {"error": "Node not found"}

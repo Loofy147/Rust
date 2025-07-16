@@ -3,6 +3,7 @@ import time
 import random
 import sys
 import uuid
+import signal
 
 API_URL = "http://localhost:8000"  # Adjust as needed
 NODE_ID = sys.argv[1] if len(sys.argv) > 1 else str(uuid.uuid4())
@@ -57,7 +58,16 @@ def process_task(task):
     report_result(task.get('id', str(uuid.uuid4())), result)
     current_load -= 1
 
+def deregister():
+    r = requests.post(f"{API_URL}/agents/deregister", json={"node_id": NODE_ID})
+    print(f"Deregistered node: {NODE_ID} | {r.json()}")
+
 if __name__ == "__main__":
+    def handle_exit(signum, frame):
+        deregister()
+        exit(0)
+    signal.signal(signal.SIGINT, handle_exit)
+    signal.signal(signal.SIGTERM, handle_exit)
     while True:
         heartbeat()
         tasks = poll_tasks()
