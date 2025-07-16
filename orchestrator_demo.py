@@ -34,13 +34,19 @@ class Orchestrator:
             return agent.call_plugin(kwargs.get("plugin_name"), *kwargs.get("plugin_args", []))
         elif task == "ingest_texts":
             agent = self.agents.get("training_data")
-            return agent.ingest_texts(kwargs.get("texts", []), kwargs.get("metadatas"))
+            return agent.ingest_texts(kwargs.get("texts", []), kwargs.get("metadatas"), kwargs.get("label"))
         elif task == "ingest_documents":
             agent = self.agents.get("training_data")
-            return agent.ingest_documents(kwargs.get("docs", []), kwargs.get("chunk_size", 256), kwargs.get("overlap", 32))
+            return agent.ingest_documents(kwargs.get("docs", []), kwargs.get("chunk_size", 256), kwargs.get("overlap", 32), kwargs.get("label"))
         elif task == "export_training_data":
             agent = self.agents.get("training_data")
             return agent.export_for_finetuning(kwargs.get("path", "train_data.jsonl"))
+        elif task == "validate_training_data":
+            agent = self.agents.get("training_data")
+            return agent.validate(kwargs.get("validator"))
+        elif task == "compute_training_stats":
+            agent = self.agents.get("training_data")
+            return agent.compute_stats()
         else:
             agent = self.agents.get("hybrid")
             return agent.hybrid_search(query, **kwargs)
@@ -118,12 +124,20 @@ if __name__ == "__main__":
     orchestrator.register_agent("training_data", training_agent)
 
     print("\n--- Orchestrator: Ingest Training Texts ---")
-    orchestrator.route(None, task="ingest_texts", texts=["New York is vibrant.", "Tokyo is bustling."])
+    orchestrator.route(None, task="ingest_texts", texts=["New York is vibrant.", "Tokyo is bustling."], label="city")
     print(training_agent.get_stats())
 
     print("\n--- Orchestrator: Ingest Training Documents ---")
-    orchestrator.route(None, task="ingest_documents", docs=["London is historic. The Thames flows through London."], chunk_size=5, overlap=1)
+    orchestrator.route(None, task="ingest_documents", docs=["London is historic. The Thames flows through London."], chunk_size=5, overlap=1, label="history")
     print(training_agent.get_stats())
+
+    print("\n--- Orchestrator: Validate Training Data ---")
+    errors = orchestrator.route(None, task="validate_training_data", validator=lambda t: len(t) > 10)
+    print(f"Validation errors: {errors}")
+
+    print("\n--- Orchestrator: Compute Training Data Stats ---")
+    stats = orchestrator.route(None, task="compute_training_stats")
+    print(f"Training data stats: {stats}")
 
     print("\n--- Orchestrator: Export Training Data ---")
     orchestrator.route(None, task="export_training_data", path="train_data.jsonl")
