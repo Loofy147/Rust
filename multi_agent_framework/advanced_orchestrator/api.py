@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket, Request, status
+from fastapi import FastAPI, WebSocket, Request, status, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import asyncio
@@ -7,6 +7,46 @@ from advanced_orchestrator.orchestrator import orchestrator
 import traceback
 from advanced_orchestrator.monitoring import api_request_counter, api_error_counter, tracer
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from jose import JWTError, jwt
+from datetime import datetime, timedelta
+import logging
+
+SECRET_KEY = "supersecretkey"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
+logger = logging.getLogger("audit")
+
+users_db = {
+    "annotator": {"username": "annotator", "role": "annotator", "password": "annotatorpass"},
+    "reviewer": {"username": "reviewer", "role": "reviewer", "password": "reviewerpass"},
+    "admin": {"username": "admin", "role": "admin", "password": "adminpass"}
+}
+
+def create_access_token(data: dict, expires_delta: timedelta = None):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+async def get_current_user(token: str = Depends(oauth2_scheme)):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None or username not in users_db:
+            raise JWTError()
+        return users_db[username]
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid authentication credentials")
+
+def require_role(role):
+    def role_checker(user=Depends(get_current_user)):
+        if user["role"] != role and user["role"] != "admin":
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        return user
+    return role_checker
 
 app = FastAPI()
 
@@ -46,14 +86,23 @@ def metrics():
 def health():
     return {"status": "ok"}
 
+@app.post("/login")
+async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    user = users_db.get(form_data.username)
+    if not user or user["password"] != form_data.password:
+        raise HTTPException(status_code=400, detail="Incorrect username or password")
+    access_token = create_access_token({"sub": user["username"]})
+    return {"access_token": access_token, "token_type": "bearer", "role": user["role"]}
+
 # Instrumented endpoints
 @app.post("/register_agent")
-async def register_agent(request: Request):
+async def register_agent(request: Request, user=Depends(require_role("admin"))):
     with tracer.start_as_current_span("register_agent"):
         api_request_counter.labels(endpoint="/register_agent", method="POST").inc()
         try:
             data = await request.json()
             REGISTRY.register(data['agent_id'], data['info'])
+            logger.info(f"User {user['username']} registered agent {data['agent_id']}")
             return JSONResponse({"status": "registered"})
         except Exception as e:
             api_error_counter.labels(endpoint="/register_agent", method="POST").inc()
