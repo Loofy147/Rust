@@ -482,3 +482,50 @@ def healthz():
 # - Async LLM tasks via Celery+Redis
 # - LLM plugin system: OpenAI, Hugging Face, extensible
 # - Ready for extension: user registration, roles, external IdP, etc.
+
+from kg.sqlite_kg import SQLiteKG
+import json
+
+kg = SQLiteKG()
+
+class KGNodeUpsertRequest(BaseModel):
+    label: str
+    properties: dict = {}
+
+class KGEdgeUpsertRequest(BaseModel):
+    source: int
+    target: int
+    label: str
+    properties: dict = {}
+
+class KGNodeQueryRequest(BaseModel):
+    label: str | None = None
+
+class KGEdgeQueryRequest(BaseModel):
+    source: int | None = None
+    target: int | None = None
+    label: str | None = None
+
+@app.post("/kg/node/upsert")
+def upsert_kg_node(req: KGNodeUpsertRequest, auth=Depends(get_auth_user)):
+    node_id = kg.upsert_node(req.label, json.dumps(req.properties))
+    return {"id": node_id}
+
+@app.post("/kg/edge/upsert")
+def upsert_kg_edge(req: KGEdgeUpsertRequest, auth=Depends(get_auth_user)):
+    edge_id = kg.upsert_edge(req.source, req.target, req.label, json.dumps(req.properties))
+    return {"id": edge_id}
+
+@app.post("/kg/node/query")
+def query_kg_nodes(req: KGNodeQueryRequest, auth=Depends(get_auth_user)):
+    nodes = kg.query_nodes(req.label)
+    for n in nodes:
+        n["properties"] = json.loads(n["properties"] or "{}")
+    return nodes
+
+@app.post("/kg/edge/query")
+def query_kg_edges(req: KGEdgeQueryRequest, auth=Depends(get_auth_user)):
+    edges = kg.query_edges(req.source, req.target, req.label)
+    for e in edges:
+        e["properties"] = json.loads(e["properties"] or "{}")
+    return edges
