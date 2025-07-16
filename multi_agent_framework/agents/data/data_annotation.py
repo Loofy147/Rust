@@ -20,7 +20,10 @@ class DataAnnotationAgent(BaseAgent):
         # Return samples needing annotation
         return {'pending_samples': pending.to_dict(orient='records'), 'data': raw_data}
 
-    def submit_label(self, index, label):
-        self._labels[index] = label
+    def submit_label(self, index, label, user=None):
+        self._labels[index] = {'label': label, 'user': user}
         # In production, update persistent storage or event store
-        return {'status': 'labeled', 'index': index, 'label': label}
+        return {'status': 'labeled', 'index': index, 'label': label, 'user': user}
+
+    def get_history(self):
+        return self._labels

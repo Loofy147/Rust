@@ -19,6 +19,9 @@ REGISTRY = None
 WORKFLOW_ENGINE = None
 EVENT_BUS = None
 
+# Store review queue in memory for demo
+REVIEW_QUEUE = []
+
 @app.post("/register_agent")
 async def register_agent(request: Request):
     data = await request.json()
@@ -107,7 +110,30 @@ async def annotation_samples():
 async def submit_annotation(request: Request):
     data = await request.json()
     agent = REGISTRY.get('data_annotation1')
+    user = data.get('user', 'unknown')
     if agent and hasattr(agent['info'], 'instance'):
-        result = agent['info']['instance'].submit_label(data['index'], data['label'])
+        result = agent['info']['instance'].submit_label(data['index'], data['label'], user)
+        # Add to review queue
+        REVIEW_QUEUE.append({
+            'index': data['index'],
+            'label': data['label'],
+            'user': user,
+            'status': 'pending'
+        })
         return result
     return {"status": "error", "reason": "No annotation agent"}
+
+@app.get("/review_queue")
+async def review_queue():
+    return REVIEW_QUEUE
+
+@app.post("/review_annotation")
+async def review_annotation(request: Request):
+    data = await request.json()
+    for item in REVIEW_QUEUE:
+        if item['index'] == data['index']:
+            item['status'] = data['status']
+            item['reviewer'] = data.get('reviewer', 'reviewer')
+            item['review_comment'] = data.get('comment', '')
+            return {"status": "reviewed"}
+    return {"status": "not_found"}
