@@ -3,6 +3,9 @@ from autonomous_architect.codebase_graph import IntelligentCodebaseGraph
 from autonomous_architect.agents.architect import ArchitectAgent
 from autonomous_architect.agents.performance import PerformanceAgent
 from autonomous_architect.agents.security import SecurityAgent
+from autonomous_architect.agents.documentation import DocumentationAgent
+from autonomous_architect.agents.testing import TestingAgent
+from autonomous_architect.agents.deployment import DeploymentAgent
 from autonomous_architect.agents.base import AgentCapability
 from autonomous_architect.ml.pattern_recognition import PatternRecognizer
 from autonomous_architect.ml.predictive_analytics import PredictiveAnalytics
@@ -21,12 +24,19 @@ class AutonomousArchitectureOrchestrator:
     def _init_agents(self):
         agents = []
         for agent_conf in self.config.get('agents', []):
-            if 'code_analysis' in agent_conf['capabilities'] or 'architecture_design' in agent_conf['capabilities']:
+            caps = agent_conf['capabilities']
+            if 'code_analysis' in caps or 'architecture_design' in caps:
                 agent = ArchitectAgent(agent_conf['id'], self.codebase_graph)
-            elif 'performance_optimization' in agent_conf['capabilities']:
+            elif 'performance_optimization' in caps:
                 agent = PerformanceAgent(agent_conf['id'], self.codebase_graph)
-            elif 'security_audit' in agent_conf['capabilities']:
+            elif 'security_audit' in caps:
                 agent = SecurityAgent(agent_conf['id'], self.codebase_graph)
+            elif 'documentation_generation' in caps:
+                agent = DocumentationAgent(agent_conf['id'], self.codebase_graph)
+            elif 'testing_orchestration' in caps:
+                agent = TestingAgent(agent_conf['id'], self.codebase_graph)
+            elif 'deployment_management' in caps:
+                agent = DeploymentAgent(agent_conf['id'], self.codebase_graph)
             else:
                 continue
             agents.append(agent)
