@@ -1,12 +1,24 @@
 import aiosqlite
 import asyncio
 import logging
-from typing import Dict, Any, Optional, List, Set
+from typing import Dict, Any, Optional, List, Set, Callable
 from datetime import datetime
 from collections import defaultdict
 from dataclasses import asdict
 from . import Entity, Relationship, EntityType, RelationshipType
 import json
+import importlib.util
+import os
+from abc import ABC, abstractmethod
+
+class ReasoningRule(ABC):
+    name: str
+    @abstractmethod
+    def applies_to_context(self, query_context: Dict[str, Any]) -> bool:
+        pass
+    @abstractmethod
+    async def execute(self, engine: 'AsyncKnowledgeGraphEngine', query_context: Dict[str, Any]) -> Dict[str, Any]:
+        pass
 
 class AsyncKnowledgeGraphEngine:
     def __init__(self, db_path: str = "knowledge_graph.db"):
@@ -17,6 +29,7 @@ class AsyncKnowledgeGraphEngine:
         self.relationship_type_index: Dict[RelationshipType, Set[str]] = defaultdict(set)
         self.lock = asyncio.Lock()
         self.logger = logging.getLogger("AsyncKnowledgeGraphEngine")
+        self.rules: Dict[str, ReasoningRule] = {}
 
     async def _initialize_database(self):
         async with aiosqlite.connect(self.db_path) as conn:
@@ -112,7 +125,60 @@ class AsyncKnowledgeGraphEngine:
                 results.append(entity)
             return results
 
-    async def execute_reasoning(self, query: str) -> Dict[str, Any]:
-        # Placeholder for async reasoning logic
+    async def load_rule(self, rule_path: str) -> str:
+        """Dynamically load a rule from a Python file."""
+        spec = importlib.util.spec_from_file_location("dynamic_rule", rule_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        for attr in dir(module):
+            obj = getattr(module, attr)
+            if isinstance(obj, type) and issubclass(obj, ReasoningRule) and obj is not ReasoningRule:
+                rule = obj()
+                self.rules[rule.name] = rule
+                self.logger.info(f"Loaded rule: {rule.name}")
+                return rule.name
+        raise ValueError("No ReasoningRule found in module")
+
+    async def unload_rule(self, rule_name: str) -> bool:
+        if rule_name in self.rules:
+            del self.rules[rule_name]
+            self.logger.info(f"Unloaded rule: {rule_name}")
+            return True
+        return False
+
+    async def list_rules(self) -> List[str]:
+        return list(self.rules.keys())
+
+    async def reload_rules_and_listeners(self):
+        # For demo: reload all rules from a 'rules/' directory
+        self.rules.clear()
+        rules_dir = os.path.join(os.path.dirname(__file__), 'rules')
+        if os.path.isdir(rules_dir):
+            for fname in os.listdir(rules_dir):
+                if fname.endswith('.py'):
+                    try:
+                        await self.load_rule(os.path.join(rules_dir, fname))
+                    except Exception as e:
+                        self.logger.error(f"Failed to load rule {fname}: {e}")
+
+    async def execute_reasoning(self, query: str, context: Dict[str, Any] = None, rules: List[str] = None, trace: bool = False) -> Dict[str, Any]:
         self.logger.info(f"Reasoning executed for query: {query}")
-        return {"query": query, "result": "Reasoning not implemented"}
+        context = context or {}
+        trace_log = []
+        inferred_facts = []
+        confidence_scores = {}
+        for rule_name, rule in self.rules.items():
+            if rules and rule_name not in rules:
+                continue
+            if rule.applies_to_context(context):
+                result = await rule.execute(self, context)
+                inferred_facts.extend(result.get('facts', []))
+                confidence_scores.update(result.get('confidence', {}))
+                if trace:
+                    trace_log.append({"rule": rule_name, "result": result, "timestamp": datetime.now().isoformat()})
+        return {
+            "query": query,
+            "inferred_facts": inferred_facts,
+            "confidence_scores": confidence_scores,
+            "trace": trace_log if trace else None
+        }
