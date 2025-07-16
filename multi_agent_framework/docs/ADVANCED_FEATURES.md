@@ -47,6 +47,16 @@ This document describes the advanced features implemented in the multi-agent orc
 - **API**: Register and discover edge agents with location metadata.
 - **Usage**: `/register_edge_agent`, `/edge_agents` endpoints.
 
+## 10. Data Preparation Agents
+- **DataPreparationAgent**: Orchestrates the full data pipeline for ML/LLM training.
+- **DataIngestionAgent**: Fetches raw data from files, URLs, or DBs.
+- **DataCleaningAgent**: Cleans and normalizes data (deduplication, missing values).
+- **DataTransformationAgent**: Feature engineering, tokenization, vectorization.
+- **DataLabelingAgent**: Applies or manages labels (manual, weak, or auto).
+- **DataSplitAgent**: Splits data into train/val/test sets.
+- **DataExportAgent**: Prepares data for downstream ML/LLM training.
+- **Usage**: See `config/example_data_workflow.yaml` for a sample workflow chaining these agents. Register your data agents in `config/config.yaml`.
+
 ---
 
 ## Extension Notes

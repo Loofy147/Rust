@@ -9,6 +9,20 @@ agents:
     type: memory
   - id: supervisor1
     type: supervisor
+  - id: data_preparation1
+    type: data_preparation
+  - id: data_ingestion1
+    type: data_ingestion
+  - id: data_cleaning1
+    type: data_cleaning
+  - id: data_transformation1
+    type: data_transformation
+  - id: data_labeling1
+    type: data_labeling
+  - id: data_split1
+    type: data_split
+  - id: data_export1
+    type: data_export
 
 workflows:
   - id: example_workflow
