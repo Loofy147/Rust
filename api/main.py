@@ -85,8 +85,12 @@ async def get_task(request: Request, task_id: str, user=Depends(get_current_user
     if result.ready():
         try:
             output = result.get()
-            tasks[task_id]["status"] = "completed"
-            tasks[task_id]["result"] = output["result"]
+            if output.get("status") == "failed":
+                tasks[task_id]["status"] = "failed"
+                tasks[task_id]["result"] = output["result"]
+            else:
+                tasks[task_id]["status"] = "completed"
+                tasks[task_id]["result"] = output["result"]
         except Exception as e:
             tasks[task_id]["status"] = "failed"
             tasks[task_id]["result"] = str(e)

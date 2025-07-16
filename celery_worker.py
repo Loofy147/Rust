@@ -2,6 +2,8 @@ import os
 from celery import Celery
 from agent.plugin_loader import load_plugins
 from agent.core import ReasoningAgent
+import logging
+import traceback
 
 if os.getenv("OTEL_ENABLED", "0") == "1":
     from opentelemetry.instrumentation.celery import CeleryInstrumentor
@@ -27,5 +29,9 @@ agent = ReasoningAgent(llm, kg, vector_store, metrics, prompt_builder)
 
 @celery_app.task
 def process_task_celery(task_id, task_input):
-    result = agent.handle_task(task_input)
-    return {"task_id": task_id, "result": result}
+    try:
+        result = agent.handle_task(task_input)
+        return {"task_id": task_id, "result": result, "status": "completed"}
+    except Exception as e:
+        logging.error(f"Celery task failed: {e}\n{traceback.format_exc()}")
+        return {"task_id": task_id, "result": str(e), "status": "failed"}
