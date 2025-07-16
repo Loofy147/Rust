@@ -144,5 +144,103 @@ streamlit run ui/distributed_dashboard.py
 
 ---
 
+## API Reference
+
+### **Authentication**
+All endpoints require an `Authorization: Bearer <API_KEY>` header.
+
+### **Core Endpoints**
+
+#### **Health & Metrics**
+- `GET /health` — Health check
+- `GET /metrics` — Prometheus metrics
+
+#### **Node Management**
+- `POST /agents/register` — Register a node
+- `POST /agents/heartbeat` — Node heartbeat
+- `POST /agents/deregister` — Deregister a node
+- `GET /agents/nodes` — List all nodes
+
+#### **Task Management**
+- `POST /tasks/submit` — Submit a new task
+- `POST /tasks/result` — Node reports task result
+- `POST /tasks/reject` — Node rejects a task (re-queues)
+- `GET /tasks/queued` — List queued tasks
+- `GET /tasks/in_progress` — List in-progress tasks
+- `GET /tasks/results` — List completed tasks/results
+- `GET /tasks/status/{task_id}` — Get status/result for a specific task
+- `POST /vector_search` — Vector similarity search (FAISS demo)
+
+#### **Analytics**
+- `GET /analytics/throughput` — Tasks completed in the last hour
+- `GET /analytics/errors` — Number of failed tasks
+- `GET /analytics/node_uptime` — Node last-seen times
+- `GET /analytics/task_types` — Task type distribution
+
+---
+
+## Deployment Guide
+
+### **Docker Compose**
+
+1. **Build and start all services:**
+   ```bash
+   docker-compose up --build
+   ```
+2. **Access the API:** http://localhost:8000
+3. **Access the dashboard:** http://localhost:8501
+4. **PostgreSQL is internal only.**
+
+### **Kubernetes**
+
+1. **Create namespace (optional):**
+   ```bash
+   kubectl create namespace agentsys
+   ```
+2. **Apply ConfigMap and Secret:**
+   ```bash
+   kubectl apply -f k8s/configmap.yaml
+   ```
+3. **Deploy PostgreSQL:**
+   ```bash
+   kubectl apply -f k8s/postgres-deployment.yaml
+   ```
+4. **Deploy API, dashboard, nodes, auto-scaler:**
+   ```bash
+   kubectl apply -f k8s/api-deployment.yaml
+   kubectl apply -f k8s/dashboard-deployment.yaml
+   kubectl apply -f k8s/node-deployment.yaml
+   kubectl apply -f k8s/auto-scaler-deployment.yaml
+   ```
+5. **Expose API and dashboard (NodePort):**
+   ```bash
+   kubectl apply -f k8s/services.yaml
+   ```
+6. **Access the API:** http://<node-ip>:30080
+7. **Access the dashboard:** http://<node-ip>:30851
+
+---
+
+## Security
+- All API endpoints require an API key (set in `.env` or Kubernetes Secret)
+- Use strong, unique API keys in production
+- Database is not exposed outside the cluster/network
+
+---
+
+## Monitoring
+- Prometheus can scrape `/metrics` for all API metrics
+- Use Grafana for dashboards (example dashboards can be provided)
+- Logs are structured JSON for easy ingestion
+
+---
+
+## Extending
+- Add new task types, node capabilities, or analytics endpoints as needed
+- Integrate with external LLMs or vector DBs
+- Add authentication/authorization layers for multi-tenant or public deployments
+
+---
+
 ## License
 MIT
