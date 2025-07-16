@@ -1,11 +1,14 @@
-from fastapi import FastAPI, HTTPException, Depends, Header, Request
+from fastapi import FastAPI, HTTPException, Depends, Header, Request, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 import importlib
+from jose import JWTError, jwt
+from passlib.context import CryptContext
 
 # --- Rate limiting ---
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -31,6 +34,15 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./reasoning_agent.db")
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+
+# --- User model for OAuth2 ---
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    full_name = Column(String, nullable=True)
+    disabled = Column(Integer, default=0)
 
 class TaskRecord(Base):
     __tablename__ = "tasks"
@@ -73,12 +85,62 @@ limiter = Limiter(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+# --- Password hashing and JWT config ---
+SECRET_KEY = os.environ.get("JWT_SECRET", "supersecretkey")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def verify_password(plain_password, hashed_password):
+    return pwd_context.verify(plain_password, hashed_password)
+
+def get_password_hash(password):
+    return pwd_context.hash(password)
+
+def create_access_token(data: dict, expires_delta: timedelta | None = None):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+# --- OAuth2/JWT dependencies ---
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/token")
+
+def get_user(db: Session, username: str):
+    return db.query(User).filter(User.username == username).first()
+
+def authenticate_user(db: Session, username: str, password: str):
+    user = get_user(db, username)
+    if not user or not verify_password(password, user.hashed_password):
+        return None
+    return user
+
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(lambda: SessionLocal())):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+    user = get_user(db, username)
+    if user is None or user.disabled:
+        raise credentials_exception
+    return user
+
 # --- API Key Auth ---
 def get_api_keys():
     keys = os.environ.get("API_KEYS", "testkey").split(",")
     return set(k.strip() for k in keys if k.strip())
 
-async def verify_api_key(x_api_key: str = Header(...)):
+async def verify_api_key(x_api_key: str = Header(None)):
+    if x_api_key is None:
+        return None
     if x_api_key not in get_api_keys():
         raise HTTPException(status_code=401, detail="Invalid or missing API key.")
     return x_api_key
@@ -92,6 +154,18 @@ def get_db():
         db.close()
 
 # --- Models ---
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    username: str | None = None
+
+class UserOut(BaseModel):
+    username: str
+    full_name: str | None = None
+    disabled: bool = False
+
 class TaskRequest(BaseModel):
     prompt: str
     model: str = "text-davinci-003"
@@ -118,16 +192,36 @@ class QueryResponse(BaseModel):
     temperature: float
     api_key: str | None
 
+# --- OAuth2 /token endpoint ---
+@app.post("/token", response_model=Token)
+def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
+    db = SessionLocal()
+    user = authenticate_user(db, form_data.username, form_data.password)
+    if not user:
+        raise HTTPException(status_code=400, detail="Incorrect username or password")
+    access_token = create_access_token(data={"sub": user.username})
+    return {"access_token": access_token, "token_type": "bearer"}
+
 # --- Endpoints ---
+def get_auth_user(
+    x_api_key: str = Depends(verify_api_key),
+    user: User = Depends(get_current_user)
+):
+    # Allow either valid API key or valid JWT
+    if x_api_key or user:
+        return user or x_api_key
+    raise HTTPException(status_code=401, detail="Not authenticated")
+
 @app.post("/task", response_model=TaskResponse)
 @limiter.limit(get_rate_limit())
 async def submit_task(
     req: TaskRequest,
-    x_api_key: str = Depends(verify_api_key),
+    auth=Depends(get_auth_user),
     request: Request = None
 ):
     # Enqueue async LLM task
     LLM_CALLS.labels(req.model).inc()
+    x_api_key = auth if isinstance(auth, str) else None
     task = celery.send_task(
         "api.worker.llm_task",
         args=[req.prompt, req.model, req.max_tokens, req.temperature, x_api_key],
@@ -136,7 +230,7 @@ async def submit_task(
 
 @app.get("/result/{task_id}", response_model=ResultResponse)
 @limiter.limit(get_rate_limit())
-async def get_result(task_id: str, x_api_key: str = Depends(verify_api_key)):
+async def get_result(task_id: str, auth=Depends(get_auth_user)):
     result = AsyncResult(task_id, app=celery)
     if result.state == "PENDING":
         return ResultResponse(status="pending")
@@ -160,7 +254,7 @@ async def get_result(task_id: str, x_api_key: str = Depends(verify_api_key)):
 async def query_tasks(
     prompt: str = None,
     db: Session = Depends(get_db),
-    x_api_key: str = Depends(verify_api_key),
+    auth=Depends(get_auth_user),
     request: Request = None
 ):
     q = db.query(TaskRecord)
@@ -184,7 +278,7 @@ async def query_tasks(
 
 @app.get("/metrics")
 @limiter.limit(get_rate_limit())
-async def metrics(db: Session = Depends(get_db), x_api_key: str = Depends(verify_api_key), request: Request = None):
+async def metrics(db: Session = Depends(get_db), auth=Depends(get_auth_user), request: Request = None):
     count = db.query(TaskRecord).count()
     return {"tasks_processed": count}
 
@@ -194,10 +288,10 @@ def healthz():
     return {"status": "ok"}
 
 # --- Best practices ---
-# - All endpoints require X-API-Key header
+# - All endpoints require OAuth2/JWT or X-API-Key
 # - Per-API-key distributed rate limiting (Redis backend, configurable via REDIS_URL)
 # - All tasks/answers persisted in SQLite (configurable via DATABASE_URL)
 # - Rust LLM plugin is called via Python extension
 # - Prometheus metrics for LLM, DB, and API
 # - Async LLM tasks via Celery+Redis
-# - Ready for extension: OAuth2, async queue, Prometheus, etc.
+# - Ready for extension: user registration, roles, external IdP, etc.
