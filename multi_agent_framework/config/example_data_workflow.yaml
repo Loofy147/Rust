@@ -10,9 +10,13 @@ steps:
   - id: validate
     agent: data_validation1
     depends_on: [clean]
+  - id: annotate
+    agent: data_annotation1
+    depends_on: [validate]
+    hitl: true
   - id: transform
     agent: data_transformation1
-    depends_on: [validate]
+    depends_on: [annotate]
   - id: label
     agent: data_labeling1
     depends_on: [transform]

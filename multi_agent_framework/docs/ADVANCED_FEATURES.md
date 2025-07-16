@@ -56,7 +56,8 @@ This document describes the advanced features implemented in the multi-agent orc
 - **DataSplitAgent**: Splits data into train/val/test sets.
 - **DataExportAgent**: Prepares data for downstream ML/LLM training.
 - **DataValidationAgent**: Checks schema, computes statistics, and flags anomalies/outliers.
-- **Usage**: See `config/example_data_workflow.yaml` for a sample workflow chaining these agents. Register your data agents in `config/config.yaml`. The validation step produces a report for monitoring and compliance.
+- **DataAnnotationAgent**: Presents samples for human annotation (HITL) and accepts submitted labels. Integrates with the HITL workflow and API endpoints `/annotation_samples` and `/submit_annotation`.
+- **Usage**: See `config/example_data_workflow.yaml` for a sample workflow chaining these agents. Register your data agents in `config/config.yaml`. The validation step produces a report for monitoring and compliance. The annotation step supports human-in-the-loop labeling via API or UI.
 
 ---
 

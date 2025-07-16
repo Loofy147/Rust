@@ -25,6 +25,8 @@ agents:
     type: data_export
   - id: data_validation1
     type: data_validation
+  - id: data_annotation1
+    type: data_annotation
 
 workflows:
   - id: example_workflow

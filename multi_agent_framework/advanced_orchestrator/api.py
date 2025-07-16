@@ -93,3 +93,21 @@ async def register_edge_agent(request: Request):
 @app.get("/edge_agents")
 async def list_edge_agents(location: str = None):
     return REGISTRY.find_edge_agents(location)
+
+@app.get("/annotation_samples")
+async def annotation_samples():
+    # For demo: fetch from the first registered annotation agent
+    agent = REGISTRY.get('data_annotation1')
+    if agent and hasattr(agent['info'], 'instance'):
+        samples = agent['info']['instance'].process({'data': ''})['pending_samples']
+        return samples
+    return []
+
+@app.post("/submit_annotation")
+async def submit_annotation(request: Request):
+    data = await request.json()
+    agent = REGISTRY.get('data_annotation1')
+    if agent and hasattr(agent['info'], 'instance'):
+        result = agent['info']['instance'].submit_label(data['index'], data['label'])
+        return result
+    return {"status": "error", "reason": "No annotation agent"}
