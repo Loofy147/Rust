@@ -6,10 +6,15 @@ import uuid
 import signal
 import os
 from dotenv import load_dotenv
+import openai
 
 load_dotenv()
 API_KEY = os.environ.get('API_KEY', 'changeme')
 HEADERS = {"Authorization": f"Bearer {API_KEY}"}
+
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
+if OPENAI_API_KEY:
+    openai.api_key = OPENAI_API_KEY
 
 API_URL = "http://localhost:8000"  # Adjust as needed
 NODE_ID = sys.argv[1] if len(sys.argv) > 1 else str(uuid.uuid4())
@@ -59,8 +64,20 @@ def process_task(task):
         return
     print(f"Processing task: {task}")
     current_load += 1
-    time.sleep(random.uniform(1, 3))
-    result = f"Processed by {NODE_ID}: {task.get('text', '')}"
+    result = None
+    if task.get('type') == 'llm' and OPENAI_API_KEY:
+        prompt = task.get('text', '')
+        try:
+            resp = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}]
+            )
+            result = resp['choices'][0]['message']['content']
+        except Exception as e:
+            result = f"LLM error: {e}"
+    else:
+        time.sleep(random.uniform(1, 3))
+        result = f"Processed by {NODE_ID}: {task.get('text', '')}"
     report_result(task.get('id', str(uuid.uuid4())), result)
     current_load -= 1
 
