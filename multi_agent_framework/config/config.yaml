@@ -1,0 +1,35 @@
+agents:
+  - id: planner1
+    type: planner
+  - id: retriever1
+    type: retriever
+  - id: evaluator1
+    type: evaluator
+  - id: memory1
+    type: memory
+  - id: supervisor1
+    type: supervisor
+
+workflows:
+  - id: example_workflow
+    steps:
+      - id: step1
+        agent: planner1
+      - id: step2
+        agent: retriever1
+        depends_on: [step1]
+      - id: step3
+        agent: evaluator1
+        depends_on: [step2]
+
+storage:
+  redis_url: redis://localhost:6379/0
+  elasticsearch_url: http://localhost:9200
+  neo4j:
+    uri: bolt://localhost:7687
+    user: neo4j
+    password: test
+
+plugins:
+  - name: custom_agent
+    path: plugins/custom_agent.py
