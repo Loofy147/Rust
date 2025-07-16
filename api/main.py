@@ -239,6 +239,18 @@ class ApiKeyListResponse(BaseModel):
     created_at: datetime
     revoked: bool
 
+class UserRegisterRequest(BaseModel):
+    username: str
+    password: str
+    full_name: str | None = None
+
+class UserListResponse(BaseModel):
+    id: int
+    username: str
+    full_name: str | None
+    is_admin: bool
+    disabled: bool
+
 # --- OAuth2 /token endpoint ---
 @app.post("/token", response_model=Token)
 def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
@@ -374,6 +386,81 @@ def revoke_apikey(key_id: int, admin: User = Depends(require_admin_user)):
     key.revoked = 1
     db.commit()
     return {"revoked": True, "id": key_id}
+
+@app.post("/users/register")
+def register_user(req: UserRegisterRequest):
+    db = SessionLocal()
+    user_count = db.query(User).count()
+    # Open registration if no users exist, admin-only after
+    if user_count > 0:
+        raise HTTPException(status_code=403, detail="Registration closed. Contact admin.")
+    if db.query(User).filter(User.username == req.username).first():
+        raise HTTPException(status_code=400, detail="Username already exists")
+    user = User(
+        username=req.username,
+        hashed_password=get_password_hash(req.password),
+        full_name=req.full_name,
+        is_admin=1,  # First user is admin
+        disabled=0
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return {"id": user.id, "username": user.username, "is_admin": True}
+
+@app.get("/users", response_model=list[UserListResponse])
+def list_users(admin: User = Depends(require_admin_user)):
+    db = SessionLocal()
+    users = db.query(User).all()
+    return [
+        UserListResponse(
+            id=u.id,
+            username=u.username,
+            full_name=u.full_name,
+            is_admin=bool(u.is_admin),
+            disabled=bool(u.disabled)
+        ) for u in users
+    ]
+
+@app.post("/users/{user_id}/disable")
+def disable_user(user_id: int, admin: User = Depends(require_admin_user)):
+    db = SessionLocal()
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.disabled = 1
+    db.commit()
+    return {"disabled": True, "id": user_id}
+
+@app.post("/users/{user_id}/enable")
+def enable_user(user_id: int, admin: User = Depends(require_admin_user)):
+    db = SessionLocal()
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.disabled = 0
+    db.commit()
+    return {"enabled": True, "id": user_id}
+
+@app.post("/users/{user_id}/promote")
+def promote_user(user_id: int, admin: User = Depends(require_admin_user)):
+    db = SessionLocal()
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.is_admin = 1
+    db.commit()
+    return {"promoted": True, "id": user_id}
+
+@app.post("/users/{user_id}/demote")
+def demote_user(user_id: int, admin: User = Depends(require_admin_user)):
+    db = SessionLocal()
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.is_admin = 0
+    db.commit()
+    return {"demoted": True, "id": user_id}
 
 @app.get("/metrics")
 @limiter.limit(get_rate_limit())
