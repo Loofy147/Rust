@@ -1,17 +1,26 @@
-from fastapi import FastAPI, Depends, Body
+from fastapi import FastAPI, Depends, Body, HTTPException, Header
 import yaml
 from db.models import Node, Task
 from db.session import get_db
 from sqlalchemy.orm import Session
 import time
 import uuid
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+API_KEY = os.environ.get('API_KEY', 'changeme')
 
 app = FastAPI()
 
 with open('config.yaml') as f:
     config = yaml.safe_load(f)
 
-@app.post("/agents/register")
+def check_api_key(authorization: str = Header(...)):
+    if authorization != f"Bearer {API_KEY}":
+        raise HTTPException(status_code=401, detail="Invalid or missing API key.")
+
+@app.post("/agents/register", dependencies=[Depends(check_api_key)])
 def register_node(payload: dict = Body(...), db: Session = Depends(get_db)):
     node_id = payload.get('node_id')
     node = db.query(Node).filter_by(node_id=node_id).first()
@@ -24,7 +33,7 @@ def register_node(payload: dict = Body(...), db: Session = Depends(get_db)):
     db.commit()
     return {"status": "registered", "node_id": node_id}
 
-@app.post("/agents/heartbeat")
+@app.post("/agents/heartbeat", dependencies=[Depends(check_api_key)])
 def node_heartbeat(payload: dict = Body(...), db: Session = Depends(get_db)):
     node_id = payload.get('node_id')
     capabilities = payload.get('capabilities', {})
@@ -39,13 +48,13 @@ def node_heartbeat(payload: dict = Body(...), db: Session = Depends(get_db)):
         return {"status": "heartbeat", "node_id": node_id}
     return {"error": "Node not registered"}
 
-@app.get("/agents/nodes")
+@app.get("/agents/nodes", dependencies=[Depends(check_api_key)])
 def list_nodes(db: Session = Depends(get_db)):
     now = time.time()
     nodes = db.query(Node).all()
     return {n.node_id: {"status": n.status, "capabilities": n.capabilities, "load": n.load, "last_seen_delta": now-n.last_seen} for n in nodes}
 
-@app.post("/agents/deregister")
+@app.post("/agents/deregister", dependencies=[Depends(check_api_key)])
 def deregister_node(payload: dict = Body(...), db: Session = Depends(get_db)):
     node_id = payload.get('node_id')
     node = db.query(Node).filter_by(node_id=node_id).first()
@@ -55,7 +64,7 @@ def deregister_node(payload: dict = Body(...), db: Session = Depends(get_db)):
         return {"status": "deregistered", "node_id": node_id}
     return {"error": "Node not found"}
 
-@app.post("/tasks/submit")
+@app.post("/tasks/submit", dependencies=[Depends(check_api_key)])
 def submit_task(payload: dict = Body(...), db: Session = Depends(get_db)):
     task_id = payload.get('id') or str(uuid.uuid4())
     payload['id'] = task_id
@@ -85,14 +94,14 @@ def submit_task(payload: dict = Body(...), db: Session = Depends(get_db)):
     else:
         return {"status": "queued", "reason": "no suitable node", "task": payload, "task_id": task_id}
 
-@app.get("/tasks/status/{task_id}")
+@app.get("/tasks/status/{task_id}", dependencies=[Depends(check_api_key)])
 def get_task_status_api(task_id: str, db: Session = Depends(get_db)):
     task = db.query(Task).filter_by(id=task_id).first()
     if not task:
         return {}
     return {"status": task.status, "node_id": task.node_id, "result": task.result, "payload": task.payload}
 
-@app.post("/tasks/result")
+@app.post("/tasks/result", dependencies=[Depends(check_api_key)])
 def report_result(payload: dict = Body(...), db: Session = Depends(get_db)):
     node_id = payload.get('node_id')
     task_id = payload.get('task_id')
@@ -106,7 +115,7 @@ def report_result(payload: dict = Body(...), db: Session = Depends(get_db)):
         db.commit()
     return {"status": "result_received", "task_id": task_id}
 
-@app.post("/tasks/reject")
+@app.post("/tasks/reject", dependencies=[Depends(check_api_key)])
 def reject_task(payload: dict = Body(...), db: Session = Depends(get_db)):
     task = payload.get('task')
     task_id = task.get('id')
@@ -117,7 +126,7 @@ def reject_task(payload: dict = Body(...), db: Session = Depends(get_db)):
         db.commit()
     return {"status": "requeued", "task": task}
 
-@app.get("/tasks/queued")
+@app.get("/tasks/queued", dependencies=[Depends(check_api_key)])
 def get_queued_tasks(db: Session = Depends(get_db)):
     now = time.time()
     timeout = 30
@@ -132,10 +141,10 @@ def get_queued_tasks(db: Session = Depends(get_db)):
             queued.append(t.payload)
     return queued
 
-@app.get("/tasks/in_progress")
+@app.get("/tasks/in_progress", dependencies=[Depends(check_api_key)])
 def get_in_progress_tasks(db: Session = Depends(get_db)):
     return {t.id: {"status": t.status, "node_id": t.node_id, "payload": t.payload} for t in db.query(Task).filter_by(status='assigned')}
 
-@app.get("/tasks/results")
+@app.get("/tasks/results", dependencies=[Depends(check_api_key)])
 def get_all_results(db: Session = Depends(get_db)):
     return {t.id: {"result": t.result, "node_id": t.node_id, "payload": t.payload} for t in db.query(Task).filter_by(status='done')}
