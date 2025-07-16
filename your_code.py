@@ -75,14 +75,24 @@ class AttentionHeadConfiguration:
 class AttentionDataConsistencyManager:
     """Advanced consistency management for attention mechanism data"""
     
-    def __init__(self, consistency_level: ConsistencyLevel = ConsistencyLevel.STRONG):
+    def __init__(self, consistency_level: ConsistencyLevel = ConsistencyLevel.STRONG, lock_factory: callable = None):
+        """
+        :param consistency_level: ConsistencyLevel for data consistency
+        :param lock_factory: Callable that returns a new lock instance (default: threading.RLock)
+        """
         self.consistency_level = consistency_level
         self.tensor_registry: Dict[str, AttentionTensorMetadata] = {}
         self.version_vectors: Dict[str, int] = defaultdict(int)
-        self.consistency_locks: Dict[str, threading.RLock] = defaultdict(threading.RLock)
+        if lock_factory is None:
+            lock_factory = threading.RLock
+        self._lock_factory = lock_factory
+        self.consistency_locks: Dict[str, Any] = defaultdict(self._lock_factory)
         self.update_queue: queue.Queue = queue.Queue()
         self.consistency_violations: List[Dict[str, Any]] = []
         self._callbacks: Dict[str, List[callable]] = defaultdict(list)
+        # Example: To use a distributed lock, pass a custom lock_factory, e.g.:
+        #   from redis_lock import Lock as RedisLock
+        #   manager = AttentionDataConsistencyManager(lock_factory=lambda: RedisLock(redis_client, 'lockname'))
     
     def register_callback(self, event: str, callback: callable):
         """Register a callback for a specific event (e.g., 'consistency_violation')."""
