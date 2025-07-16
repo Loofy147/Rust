@@ -1,5 +1,12 @@
 from agent.interfaces import LLMPlugin, KGPlugin, VectorStorePlugin, MetricsPlugin
 from agent.prompt_builder import PromptBuilder
+import re
+
+def sanitize_task_input(task: str) -> str:
+    # Remove dangerous characters, excessive whitespace, and limit length
+    task = re.sub(r'[\x00-\x1F\x7F]', '', task)  # Remove control chars
+    task = task.strip()
+    return task[:2048]
 
 class ReasoningAgent:
     def __init__(self, llm: LLMPlugin, kg: KGPlugin, vector_store: VectorStorePlugin, metrics: MetricsPlugin, prompt_builder: PromptBuilder):
@@ -10,6 +17,7 @@ class ReasoningAgent:
         self.prompt_builder = prompt_builder
 
     def handle_task(self, task: str):
+        task = sanitize_task_input(task)
         # 1. Query KG for context
         context = self.kg.query(task)
         # 2. Query vector store for similar vectors
