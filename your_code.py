@@ -276,6 +276,12 @@ class AttentionWeightUpdateOrchestrator:
         updated_tensor = gamma * normalized_tensor + beta
         return updated_tensor
 
+try:
+    from prometheus_client import CollectorRegistry, Counter, Histogram, Gauge, generate_latest
+    PROMETHEUS_AVAILABLE = True
+except ImportError:
+    PROMETHEUS_AVAILABLE = False
+
 class MultiHeadAttentionDataAgent:
     """Comprehensive multi-head attention data orchestration agent"""
     
@@ -313,6 +319,15 @@ class MultiHeadAttentionDataAgent:
         }
         
         self._callbacks: Dict[str, List[callable]] = defaultdict(list)
+        
+        # Prometheus metrics setup
+        self._prometheus_registry = None
+        if PROMETHEUS_AVAILABLE:
+            self._prometheus_registry = CollectorRegistry()
+            self._prom_counter_updates = Counter('attention_updates_total', 'Total attention weight updates', ['head_id'], registry=self._prometheus_registry)
+            self._prom_counter_failures = Counter('attention_update_failures_total', 'Total failed attention weight updates', ['head_id'], registry=self._prometheus_registry)
+            self._prom_hist_latency = Histogram('attention_update_latency_seconds', 'Attention update latency (seconds)', ['head_id'], registry=self._prometheus_registry)
+            self._prom_gauge_violations = Gauge('attention_consistency_violations', 'Number of consistency violations', registry=self._prometheus_registry)
         
         logger.info(f"Initialized MultiHeadAttentionDataAgent with {num_heads} heads")
     
@@ -424,15 +439,22 @@ class MultiHeadAttentionDataAgent:
             
             self.performance_metrics['successful_updates'] += 1
             self._trigger_callbacks('after_update', head_id=head_id, update_type=update_type, update_params=update_params)
+            if PROMETHEUS_AVAILABLE:
+                self._prom_counter_updates.labels(head_id=str(head_id)).inc()
             
         except Exception as e:
             self.performance_metrics['failed_updates'] += 1
             logger.error(f"Failed to update attention weights for head {head_id}: {str(e)}")
+            if PROMETHEUS_AVAILABLE:
+                self._prom_counter_failures.labels(head_id=str(head_id)).inc()
             raise
         
         finally:
             update_latency = time.time() - start_time
             self.performance_metrics['update_latency'].append(update_latency)
+            if PROMETHEUS_AVAILABLE:
+                self._prom_hist_latency.labels(head_id=str(head_id)).observe(update_latency)
+                self._prom_gauge_violations.set(len(self.consistency_manager.consistency_violations))
     
     def get_system_status(self) -> Dict[str, Any]:
         """Comprehensive system status and performance metrics"""
@@ -517,6 +539,24 @@ class MultiHeadAttentionDataAgent:
             self.update_attention_weights(head_id, update_type, update_params)
         logger.info(f"Batch updated attention weights for heads: {head_ids}")
 
+    @property
+    def metrics(self) -> Dict[str, Any]:
+        """Return metrics for monitoring and Prometheus export."""
+        m = {
+            'successful_updates': self.performance_metrics['successful_updates'],
+            'failed_updates': self.performance_metrics['failed_updates'],
+            'consistency_violations': len(self.consistency_manager.consistency_violations),
+            'average_update_latency': np.mean(self.performance_metrics['update_latency']) if self.performance_metrics['update_latency'] else 0,
+        }
+        if PROMETHEUS_AVAILABLE:
+            m['prometheus_text'] = self.prometheus_metrics_text()
+        return m
+    def prometheus_metrics_text(self) -> Optional[str]:
+        """Return Prometheus metrics as a text format string, if prometheus_client is available."""
+        if PROMETHEUS_AVAILABLE and self._prometheus_registry:
+            return generate_latest(self._prometheus_registry).decode()
+        return None
+
 # Example usage and demonstration
 if __name__ == "__main__":
     # Initialize the attention data agent
@@ -573,3 +613,8 @@ if __name__ == "__main__":
     # Batch update
     agent.update_attention_weights_batch([0, 1], AttentionUpdateType.WEIGHT_DECAY, {'decay_rate': 0.0002})
     print("Batch operations successful.")
+
+    # Print metrics
+    print("Agent Metrics:", json.dumps(agent.metrics, indent=2))
+    if PROMETHEUS_AVAILABLE:
+        print("Prometheus Metrics:\n", agent.prometheus_metrics_text())
