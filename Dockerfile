@@ -37,8 +37,8 @@ WORKDIR /app
 # Copy built wheel from build stage
 COPY --from=build /app/ReasoningAgent/target/wheels/*.whl ./
 
-# Install FastAPI, Uvicorn, SQLAlchemy, slowapi, and the Rust extension
-RUN pip install *.whl fastapi uvicorn sqlalchemy pydantic slowapi
+# Install FastAPI, Uvicorn, SQLAlchemy, slowapi, prometheus, and the Rust extension
+RUN pip install *.whl fastapi uvicorn sqlalchemy pydantic slowapi prometheus_fastapi_instrumentator prometheus_client
 
 # Copy API code
 COPY ./api ./api

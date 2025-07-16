@@ -12,6 +12,10 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
+# --- Prometheus metrics ---
+from prometheus_fastapi_instrumentator import Instrumentator
+from prometheus_client import Counter
+
 # Import the Rust extension (built by maturin)
 try:
     reasoning_agent = importlib.import_module("reasoning_agent")
@@ -37,6 +41,15 @@ class TaskRecord(Base):
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="ReasoningAgent API")
+
+# --- Prometheus Instrumentation ---
+Instrumentator().instrument(app).expose(app, include_in_schema=False, endpoint="/metrics")
+
+# Custom Prometheus counters
+LLM_CALLS = Counter("llm_calls_total", "Total LLM calls", ["model"])
+LLM_ERRORS = Counter("llm_errors_total", "Total LLM call errors", ["model"])
+DB_WRITES = Counter("db_writes_total", "Total DB write operations")
+DB_READS = Counter("db_reads_total", "Total DB read operations")
 
 # --- API Key Auth ---
 def get_api_keys():
@@ -98,10 +111,12 @@ async def submit_task(
     if not reasoning_agent:
         raise HTTPException(status_code=500, detail="Rust extension not loaded")
     try:
+        LLM_CALLS.labels(req.model).inc()
         answer = reasoning_agent.call_openai(
             req.prompt, req.model, req.max_tokens, req.temperature
         )
     except Exception as e:
+        LLM_ERRORS.labels(req.model).inc()
         raise HTTPException(status_code=500, detail=f"LLM error: {e}")
     record = TaskRecord(
         prompt=req.prompt,
@@ -114,6 +129,7 @@ async def submit_task(
     db.add(record)
     db.commit()
     db.refresh(record)
+    DB_WRITES.inc()
     return TaskResponse(answer=record.answer, id=record.id, created_at=record.created_at)
 
 @app.get("/query", response_model=list[QueryResponse])
@@ -129,6 +145,7 @@ async def query_tasks(
         q = q.filter(TaskRecord.prompt.contains(prompt))
     q = q.order_by(TaskRecord.created_at.desc())
     results = q.all()
+    DB_READS.inc()
     return [
         QueryResponse(
             id=r.id,
@@ -158,4 +175,5 @@ def healthz():
 # - Per-API-key rate limiting (configurable via RATE_LIMIT env var)
 # - All tasks/answers persisted in SQLite (configurable via DATABASE_URL)
 # - Rust LLM plugin is called via Python extension
+# - Prometheus metrics for LLM, DB, and API
 # - Ready for extension: OAuth2, async queue, Prometheus, etc.
