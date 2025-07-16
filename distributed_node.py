@@ -7,6 +7,8 @@ import signal
 import os
 from dotenv import load_dotenv
 import openai
+from sentence_transformers import SentenceTransformer
+from vector_db import SimpleFaissDB
 
 load_dotenv()
 API_KEY = os.environ.get('API_KEY', 'changeme')
@@ -20,6 +22,9 @@ API_URL = "http://localhost:8000"  # Adjust as needed
 NODE_ID = sys.argv[1] if len(sys.argv) > 1 else str(uuid.uuid4())
 CAPABILITIES = {"gpu": bool(random.getrandbits(1)), "vectorizer": True}
 current_load = 0
+
+vectorizer = SentenceTransformer('all-MiniLM-L6-v2')
+faiss_db = SimpleFaissDB(dim=384)
 
 def register():
     r = requests.post(f"{API_URL}/agents/register", json={"node_id": NODE_ID}, headers=HEADERS)
@@ -75,6 +80,13 @@ def process_task(task):
             result = resp['choices'][0]['message']['content']
         except Exception as e:
             result = f"LLM error: {e}"
+    elif task.get('type') == 'vector':
+        text = task.get('text', '')
+        vector = vectorizer.encode([text])[0]
+        faiss_db.upsert(task.get('id', str(uuid.uuid4())), vector, payload=text)
+        # Optionally perform a search
+        search_results = faiss_db.search(vector, k=3)
+        result = {'vector': vector.tolist(), 'search_results': search_results}
     else:
         time.sleep(random.uniform(1, 3))
         result = f"Processed by {NODE_ID}: {task.get('text', '')}"

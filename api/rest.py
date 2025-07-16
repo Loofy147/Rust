@@ -7,6 +7,8 @@ import time
 import uuid
 import os
 from dotenv import load_dotenv
+from vector_db import SimpleFaissDB
+import numpy as np
 
 load_dotenv()
 API_KEY = os.environ.get('API_KEY', 'changeme')
@@ -148,3 +150,12 @@ def get_in_progress_tasks(db: Session = Depends(get_db)):
 @app.get("/tasks/results", dependencies=[Depends(check_api_key)])
 def get_all_results(db: Session = Depends(get_db)):
     return {t.id: {"result": t.result, "node_id": t.node_id, "payload": t.payload} for t in db.query(Task).filter_by(status='done')}
+
+faiss_db = SimpleFaissDB(dim=384)
+
+@app.post("/vector_search", dependencies=[Depends(check_api_key)])
+def vector_search(query: dict = Body(...)):
+    vector = query.get('vector')
+    k = query.get('k', 5)
+    results = faiss_db.search(np.array(vector), k)
+    return {"results": results}
