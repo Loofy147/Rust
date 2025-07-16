@@ -11,6 +11,7 @@ import importlib
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from slowapi.redis import RedisBackend
 
 # --- Prometheus metrics ---
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -59,6 +60,19 @@ DB_READS = Counter("db_reads_total", "Total DB read operations")
 REDIS_URL = os.environ.get("REDIS_URL", "redis://redis:6379/0")
 celery = Celery("main", broker=REDIS_URL, backend=REDIS_URL)
 
+# --- Distributed Rate Limiter (Redis backend) ---
+redis_backend = RedisBackend(REDIS_URL)
+def get_rate_limit():
+    return os.environ.get("RATE_LIMIT", "60/minute")
+limiter = Limiter(
+    key_func=lambda req: req.headers.get("x-api-key", ""),
+    default_limits=[get_rate_limit()],
+    storage_uri=REDIS_URL,
+    backend=redis_backend
+)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 # --- API Key Auth ---
 def get_api_keys():
     keys = os.environ.get("API_KEYS", "testkey").split(",")
@@ -68,14 +82,6 @@ async def verify_api_key(x_api_key: str = Header(...)):
     if x_api_key not in get_api_keys():
         raise HTTPException(status_code=401, detail="Invalid or missing API key.")
     return x_api_key
-
-# --- Rate Limiter ---
-def get_rate_limit():
-    return os.environ.get("RATE_LIMIT", "60/minute")
-
-limiter = Limiter(key_func=lambda req: req.headers.get("x-api-key", ""), default_limits=[get_rate_limit()])
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # --- DB Dependency ---
 def get_db():
@@ -189,7 +195,7 @@ def healthz():
 
 # --- Best practices ---
 # - All endpoints require X-API-Key header
-# - Per-API-key rate limiting (configurable via RATE_LIMIT env var)
+# - Per-API-key distributed rate limiting (Redis backend, configurable via REDIS_URL)
 # - All tasks/answers persisted in SQLite (configurable via DATABASE_URL)
 # - Rust LLM plugin is called via Python extension
 # - Prometheus metrics for LLM, DB, and API
