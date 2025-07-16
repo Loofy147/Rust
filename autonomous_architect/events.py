@@ -8,3 +8,4 @@ class ArchitectureEventType(Enum):
     DOC_UPDATE = auto()
     TEST_RESULT = auto()
     DEPLOYMENT = auto()
+    MICROSERVICE_EVENT = auto()

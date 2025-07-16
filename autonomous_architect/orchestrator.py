@@ -6,9 +6,11 @@ from autonomous_architect.agents.security import SecurityAgent
 from autonomous_architect.agents.documentation import DocumentationAgent
 from autonomous_architect.agents.testing import TestingAgent
 from autonomous_architect.agents.deployment import DeploymentAgent
+from autonomous_architect.agents.microservices import MicroservicesAgent
 from autonomous_architect.agents.base import AgentCapability
 from autonomous_architect.ml.pattern_recognition import PatternRecognizer
 from autonomous_architect.ml.predictive_analytics import PredictiveAnalytics
+from autonomous_architect.utils import EventBus
 from typing import Dict
 
 class AutonomousArchitectureOrchestrator:
@@ -16,11 +18,13 @@ class AutonomousArchitectureOrchestrator:
     def __init__(self, config: Dict = None):
         self.config = config or {}
         self.codebase_graph = IntelligentCodebaseGraph()
+        self.event_bus = EventBus()
         self.agents = self._init_agents()
         self.monitoring_interval = self.config.get('monitoring_interval', 5)
         self.learning_rate = self.config.get('learning_rate', 0.1)
         self.pattern_recognizer = PatternRecognizer()
         self.predictive_analytics = PredictiveAnalytics()
+        self._register_event_subscriptions()
     def _init_agents(self):
         agents = []
         for agent_conf in self.config.get('agents', []):
@@ -37,19 +41,36 @@ class AutonomousArchitectureOrchestrator:
                 agent = TestingAgent(agent_conf['id'], self.codebase_graph)
             elif 'deployment_management' in caps:
                 agent = DeploymentAgent(agent_conf['id'], self.codebase_graph)
+            elif 'microservices' in caps:
+                agent = MicroservicesAgent(agent_conf['id'], self.codebase_graph)
             else:
                 continue
+            # Patch agent to emit events to the bus
+            agent.emit_event = self._make_emit_event(agent)
             agents.append(agent)
         return agents
+    def _make_emit_event(self, agent):
+        async def emit(event):
+            await self.event_bus.publish(event)
+        return emit
+    def _register_event_subscriptions(self):
+        # Subscribe orchestrator to all event types and route to agents
+        for event_type in AgentCapability:
+            self.event_bus.subscribe(event_type, self._route_event)
+        # Also subscribe to ArchitectureEventType
+        from autonomous_architect.events import ArchitectureEventType
+        for event_type in ArchitectureEventType:
+            self.event_bus.subscribe(event_type, self._route_event)
+    async def _route_event(self, event):
+        # Route event to all agents that can handle it
+        for agent in self.agents:
+            if hasattr(agent, 'handle_event'):
+                await agent.event_queue.put(event)
     async def coordinate_agents(self):
         # Example: dispatch events to agents based on capability
         while True:
-            # TODO: Replace with real event source
             event = await self._get_next_event()
-            for agent in self.agents:
-                if self._agent_can_handle(agent, event):
-                    await agent.event_queue.put(event)
-            # Run ML analysis periodically
+            await self.event_bus.publish(event)
             await self.run_ml_analysis()
     def _agent_can_handle(self, agent, event):
         event_type = event['type']

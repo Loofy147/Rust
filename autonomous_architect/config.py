@@ -23,6 +23,10 @@ default_config = {
         {
             'id': 'deploy_agent',
             'capabilities': ['deployment_management']
+        },
+        {
+            'id': 'microservices_agent',
+            'capabilities': ['microservices']
         }
     ],
     'monitoring_interval': 5,
