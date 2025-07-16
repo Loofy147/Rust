@@ -1,246 +1,233 @@
-# Distributed, Auto-Scaling Agent System (DB-Backed)
+# Distributed Modular AI Orchestration Platform
 
 ## Overview
-This system is a production-grade, distributed, auto-scaling agent platform with:
-- **FastAPI** REST API
-- **PostgreSQL** (via SQLAlchemy) for persistent state
-- **Distributed nodes** (auto-register, heartbeat, deregister)
-- **Auto-scaler** (launches/kills nodes based on load)
-- **Streamlit dashboard** for live monitoring and control
-- **Advanced task routing, load balancing, and recovery**
+
+A production-grade, distributed, multi-tenant orchestration platform for AI/ML tasks, supporting modular agents, dynamic plugin management, robust vector/matrix operations, secure API access (OAuth2/JWT), and seamless integration with external AI tools (OpenAI, HuggingFace, Pinecone, etc.).
 
 ---
 
 ## Features
-- **Persistent state:** All nodes, tasks, and results are stored in PostgreSQL
-- **Auto-scaling:** Nodes are launched/killed based on system load and queue
-- **Distributed nodes:** Each node registers, heartbeats, and processes tasks
-- **Smart task routing:** Tasks are assigned to the best available node (capabilities, load)
-- **Reliable delivery:** Tasks are retried/reassigned on failure or timeout
-- **Live dashboard:** Monitor nodes, tasks, results, and system health
+
+- **Distributed, Load-Aware Orchestration**: Auto-scaling, load balancing, node health checks, and speedy recovery.
+- **Modular Agents**: Supervisor, Metrics, Processor, TaskQueue, Registry, Scheduler, Dynamic Plugin Loader.
+- **Pluggable Plugins**: Tokenizer, Normalizer, Vectorizer, custom plugins via dynamic loader.
+- **Vector DB Support**: FAISS, Pinecone, Milvus-ready, with unified vector search API.
+- **Persistent Storage**: PostgreSQL (SQLAlchemy), Redis queue, file storage, vector DB.
+- **Unified API**: FastAPI REST, gRPC, health, metrics, plugin management, vector search.
+- **Security**: OAuth2/JWT authentication, API key fallback, multi-tenant support.
+- **External AI Tool Integration**: OpenAI, HuggingFace, Pinecone, extensible adapters.
+- **Observability**: Prometheus metrics, structured logging, heartbeat, circuit breaker.
+- **UI Dashboard**: Streamlit dashboard for monitoring and management.
+- **Cloud-Native Deployment**: Docker Compose, Kubernetes manifests, CI/CD ready.
 
 ---
 
-## File Structure
+## Architecture
+
 ```
-requirements.txt
-config.yaml
-migrate_db.py
-/db/
-  models.py
-  session.py
-/api/
-  rest.py
-/distributed_node.py
-/auto_scaler.py
-/ui/
-  distributed_dashboard.py
++-------------------+      +-------------------+      +-------------------+
+|   API Layer       |<---->|   Orchestrator    |<---->|   Agents/Plugins  |
+| (FastAPI/gRPC/UI) |      | (Supervisor, ... )|      | (Vectorizer, ... )|
++-------------------+      +-------------------+      +-------------------+
+        |                        |                        |
+        v                        v                        v
++-------------------+      +-------------------+      +-------------------+
+|   Storage Layer   |<---->|   Queue Layer     |<---->|   Vector DB       |
+| (Postgres, Redis) |      | (Redis, ... )     |      | (FAISS, Pinecone) |
++-------------------+      +-------------------+      +-------------------+
 ```
 
 ---
 
-## Setup
+## Quick Start
 
-### 1. **Install PostgreSQL**
-- Create a database (default: `agentsys`)
-- Default connection: `postgresql://postgres:postgres@localhost:5432/agentsys`
-- Set `DATABASE_URL` env var if using a different connection string
+### 1. Clone & Install
 
-### 2. **Install dependencies**
-```
+```bash
+git clone <repo-url>
+cd <repo-dir>
 pip install -r requirements.txt
 ```
 
-### 3. **Run DB migration**
-```
-python migrate_db.py
+### 2. Configure
+
+Edit `config.yaml` for DB, vector DB, plugin, and security settings.
+
+### 3. Run Services
+
+#### Local (dev):
+```bash
+uvicorn main:app --reload
+streamlit run dashboard/app.py
 ```
 
-### 4. **Start API server**
-```
-uvicorn api.rest:app --reload
-```
-
-### 5. **Start nodes**
-```
-python distributed_node.py node-1
-python distributed_node.py node-2
-# Or let the auto-scaler launch nodes
+#### Docker Compose:
+```bash
+docker-compose up --build
 ```
 
-### 6. **Start auto-scaler**
-```
-python auto_scaler.py
-```
-
-### 7. **Start dashboard**
-```
-streamlit run ui/distributed_dashboard.py
+#### Kubernetes:
+```bash
+kubectl apply -f k8s/
 ```
 
 ---
 
-## Usage
+## Configuration
 
-### **Submit a Task**
-- Via dashboard or API (`/tasks/submit`)
-- Example payload:
-```json
-{
-  "text": "Process this data",
-  "required": {"gpu": true}
-}
-```
-
-### **Monitor System**
-- Dashboard shows live nodes, queued/in-progress tasks, and results
-- API endpoints:
-  - `/agents/nodes` — List all nodes
-  - `/tasks/queued` — Queued tasks
-  - `/tasks/in_progress` — In-progress tasks
-  - `/tasks/results` — Completed results
-
-### **Scaling**
-- Auto-scaler launches new nodes if load/queue is high
-- Terminates idle nodes
-- Nodes auto-register/deregister
-
-### **Node Capabilities**
-- Each node reports its capabilities (e.g., GPU, plugins)
-- Tasks can require specific capabilities
-
-### **Reliable Delivery & Recovery**
-- Tasks are retried/reassigned if a node fails or times out
-- At-least-once delivery
-
----
-
-## Customization
-- **Database:** Change `DATABASE_URL` in `db/session.py` or via env var
-- **Scaling policies:** Edit thresholds in `auto_scaler.py`
-- **Node logic:** Extend `distributed_node.py` for custom processing
-- **API:** Extend `api/rest.py` for more endpoints or security
-
----
-
-## Example: Add a New Task Type
-1. Add logic in `distributed_node.py` to handle new task types
-2. Submit tasks with a `type` field (e.g., `{ "type": "summarize", ... }`)
-3. Route and process as needed
-
----
-
-## Example: Add a New Node Capability
-1. Add to `CAPABILITIES` in `distributed_node.py`
-2. Submit tasks with `required` field (e.g., `{ "required": { "gpu": true } }`)
-3. Only nodes with that capability will process the task
-
----
-
-## Troubleshooting
-- **DB connection errors:** Check `DATABASE_URL` and PostgreSQL status
-- **Nodes not scaling:** Check auto-scaler logs and thresholds
-- **Tasks not processed:** Ensure nodes are running and have required capabilities
+Edit `config.yaml`:
+- **database**: PostgreSQL DSN
+- **redis**: Redis URL
+- **vector_db**: FAISS/Pinecone/Milvus config
+- **plugins**: Enable/disable, dynamic loading
+- **security**: JWT secret, OAuth2, API keys
+- **scaling**: Min/max nodes, cooldown, thresholds
 
 ---
 
 ## API Reference
 
-### **Authentication**
-All endpoints require an `Authorization: Bearer <API_KEY>` header.
+### Authentication
+- **/login**: Obtain JWT (OAuth2 password flow)
+- **Bearer token** required for all endpoints
 
-### **Core Endpoints**
+### Core Endpoints
+- **/tasks/submit**: Submit AI/ML task
+- **/tasks/{id}/status**: Get task status
+- **/tasks/{id}/result**: Get task result
+- **/vector/search**: Vector search (text/query vector)
+- **/plugins/list**: List available plugins
+- **/plugins/load**: Dynamically load plugin
+- **/agents/registry**: List registered agents/nodes
+- **/metrics**: Prometheus metrics
+- **/health**: Health check
+- **/external/ai**: Unified external AI tool access
 
-#### **Health & Metrics**
-- `GET /health` — Health check
-- `GET /metrics` — Prometheus metrics
-
-#### **Node Management**
-- `POST /agents/register` — Register a node
-- `POST /agents/heartbeat` — Node heartbeat
-- `POST /agents/deregister` — Deregister a node
-- `GET /agents/nodes` — List all nodes
-
-#### **Task Management**
-- `POST /tasks/submit` — Submit a new task
-- `POST /tasks/result` — Node reports task result
-- `POST /tasks/reject` — Node rejects a task (re-queues)
-- `GET /tasks/queued` — List queued tasks
-- `GET /tasks/in_progress` — List in-progress tasks
-- `GET /tasks/results` — List completed tasks/results
-- `GET /tasks/status/{task_id}` — Get status/result for a specific task
-- `POST /vector_search` — Vector similarity search (FAISS demo)
-
-#### **Analytics**
-- `GET /analytics/throughput` — Tasks completed in the last hour
-- `GET /analytics/errors` — Number of failed tasks
-- `GET /analytics/node_uptime` — Node last-seen times
-- `GET /analytics/task_types` — Task type distribution
-
----
-
-## Deployment Guide
-
-### **Docker Compose**
-
-1. **Build and start all services:**
-   ```bash
-   docker-compose up --build
-   ```
-2. **Access the API:** http://localhost:8000
-3. **Access the dashboard:** http://localhost:8501
-4. **PostgreSQL is internal only.**
-
-### **Kubernetes**
-
-1. **Create namespace (optional):**
-   ```bash
-   kubectl create namespace agentsys
-   ```
-2. **Apply ConfigMap and Secret:**
-   ```bash
-   kubectl apply -f k8s/configmap.yaml
-   ```
-3. **Deploy PostgreSQL:**
-   ```bash
-   kubectl apply -f k8s/postgres-deployment.yaml
-   ```
-4. **Deploy API, dashboard, nodes, auto-scaler:**
-   ```bash
-   kubectl apply -f k8s/api-deployment.yaml
-   kubectl apply -f k8s/dashboard-deployment.yaml
-   kubectl apply -f k8s/node-deployment.yaml
-   kubectl apply -f k8s/auto-scaler-deployment.yaml
-   ```
-5. **Expose API and dashboard (NodePort):**
-   ```bash
-   kubectl apply -f k8s/services.yaml
-   ```
-6. **Access the API:** http://<node-ip>:30080
-7. **Access the dashboard:** http://<node-ip>:30851
+### Example: Submit Task
+```bash
+curl -X POST /tasks/submit \
+  -H "Authorization: Bearer <token>" \
+  -d '{"type": "vectorize", "payload": {"text": "hello world"}}'
+```
 
 ---
 
 ## Security
-- All API endpoints require an API key (set in `.env` or Kubernetes Secret)
-- Use strong, unique API keys in production
-- Database is not exposed outside the cluster/network
+
+- **OAuth2/JWT**: Secure all endpoints, multi-tenant support
+- **API Key**: Fallback for legacy clients
+- **RBAC**: Role-based access for admin/user
+- **TLS**: Use HTTPS in production
+- **Secrets**: Store secrets in env vars or secret manager
 
 ---
 
-## Monitoring
-- Prometheus can scrape `/metrics` for all API metrics
-- Use Grafana for dashboards (example dashboards can be provided)
-- Logs are structured JSON for easy ingestion
+## Deployment
+
+### Docker Compose
+- `docker-compose up --build`
+- Services: API, Redis, Postgres, Vector DB, Dashboard
+
+### Kubernetes
+- `kubectl apply -f k8s/`
+- Includes secrets, config, persistent volumes
+
+### CI/CD
+- Example GitHub Actions workflow in `.github/workflows/`
+- Lint, test, build, deploy
 
 ---
 
-## Extending
-- Add new task types, node capabilities, or analytics endpoints as needed
-- Integrate with external LLMs or vector DBs
-- Add authentication/authorization layers for multi-tenant or public deployments
+## Monitoring & Observability
+
+- **Prometheus**: `/metrics` endpoint
+- **Grafana**: Import dashboards for metrics
+- **Structured Logging**: JSON logs, log levels
+- **Heartbeat**: Node health, auto-recovery
+- **Circuit Breaker**: Prevent cascading failures
+
+---
+
+## Extending the System
+
+- **Add Plugins**: Drop new plugin in `plugins/`, register in config or load dynamically
+- **Add Agents**: Implement agent class, register in registry
+- **Add External AI Tool**: Implement adapter, register with `ExternalAIToolAgent`
+- **Custom Vector DB**: Implement `BaseVectorDB` interface
+
+---
+
+## Troubleshooting
+
+- **Auth errors**: Check JWT/OAuth2 config, token expiry
+- **DB errors**: Check Postgres/Redis connectivity, migrations
+- **Vector search issues**: Check vector DB config, plugin status
+- **Scaling issues**: Check auto-scaler logs, node health
+- **Plugin errors**: Check plugin logs, dependencies
+
+---
+
+## File Structure
+
+```
+.
+├── main.py
+├── config.yaml
+├── requirements.txt
+├── README.md
+├── agents/
+│   ├── supervisor.py
+│   ├── metrics.py
+│   ├── processor.py
+│   ├── task_queue.py
+│   ├── registry.py
+│   ├── scheduler.py
+│   └── dynamic_loader.py
+├── plugins/
+│   ├── manager.py
+│   ├── tokenizer.py
+│   ├── normalizer.py
+│   ├── vectorizer.py
+│   └── ...
+├── storage/
+│   ├── base.py
+│   ├── file.py
+│   ├── vector_db.py
+│   └── models.py
+├── api/
+│   ├── rest.py
+│   ├── grpc.py
+│   ├── health.py
+│   ├── vector_search.py
+│   └── external_ai.py
+├── utils/
+│   ├── retry.py
+│   ├── logging.py
+│   ├── circuit_breaker.py
+│   ├── heartbeat.py
+│   └── ...
+├── dashboard/
+│   └── app.py
+├── queue/
+│   └── redis_queue.py
+├── external/
+│   └── ai_tool_agent.py
+├── k8s/
+│   └── ...
+└── .github/
+    └── workflows/
+```
 
 ---
 
 ## License
-MIT
+
+MIT License. See `LICENSE` file.
+
+---
+
+## Contact & Support
+
+- [Your Name/Org]
+- [Contact Email]
+- [Issue Tracker/GitHub]
