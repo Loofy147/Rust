@@ -59,6 +59,22 @@ if "last_task_id" in st.session_state:
     st.header(f"Task Status: {task_id}")
     status_placeholder = st.empty()
     result_placeholder = st.empty()
+
+    def ws_status():
+        ws_url = API_URL.replace("http", "ws") + f"/ws/tasks/{task_id}"
+        try:
+            ws = websocket.create_connection(ws_url)
+            while True:
+                msg = ws.recv()
+                data = json.loads(msg)
+                status_placeholder.info(f"Status: {data['status']}")
+                if data["result"]:
+                    result_placeholder.code(data["result"])
+                    break
+        except Exception as e:
+            status_placeholder.warning(f"WebSocket failed: {e}. Falling back to polling.")
+            poll_status()
+
     def poll_status():
         while True:
             resp = requests.get(f"{API_URL}/tasks/{task_id}", headers=headers)
@@ -72,7 +88,9 @@ if "last_task_id" in st.session_state:
                 status_placeholder.error(f"Error: {resp.text}")
                 break
             time.sleep(2)
+
     st.button("Refresh Status", on_click=poll_status)
-    # Optionally, auto-poll on load
+    if st.button("Start Live Updates (WebSocket)"):
+        threading.Thread(target=ws_status, daemon=True).start()
     if st.button("Start Live Polling"):
         threading.Thread(target=poll_status, daemon=True).start()
