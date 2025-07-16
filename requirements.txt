@@ -1,0 +1,16 @@
+fastapi
+uvicorn
+pydantic
+requests
+tqdm
+python-dotenv
+httpx
+numpy
+scikit-learn
+# For LLM integration (choose one or both)
+openai
+transformers
+# For vector storage (optional)
+faiss-cpu
+# For YAML config
+pyyaml

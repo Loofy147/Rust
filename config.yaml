@@ -1,0 +1,26 @@
+runtime:
+  heartbeat_interval: 10  # seconds
+  log_level: INFO
+  autosave_interval: 60  # seconds
+
+llm:
+  provider: openai  # or huggingface
+  api_key: "YOUR_API_KEY_HERE"
+  model: "gpt-3.5-turbo"
+  endpoint: ""
+
+storage:
+  type: file  # or vector_db
+  file_path: "data/kg_vectors.pkl"
+
+plugins:
+  enabled:
+    - tokenizer
+  tokenizer:
+    type: default
+    config: {}
+
+api:
+  host: 0.0.0.0
+  port: 8000
+  auth_token: "changeme"
