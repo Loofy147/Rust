@@ -3,6 +3,7 @@ from super_advanced_agents import (
     FAISSVectorStore, EmbeddingPipeline, LLMGenerator, PluginAgent, ContextWindowAgent,
     ExpiryAgent, PersonalizationAgent, ProvenanceAgent, HybridScoringAgent
 )
+from training_data_agent import TrainingDataAgent
 
 logging.basicConfig(level=logging.INFO)
 
@@ -31,6 +32,15 @@ class Orchestrator:
         elif task == "plugin":
             agent = self.agents.get("plugin")
             return agent.call_plugin(kwargs.get("plugin_name"), *kwargs.get("plugin_args", []))
+        elif task == "ingest_texts":
+            agent = self.agents.get("training_data")
+            return agent.ingest_texts(kwargs.get("texts", []), kwargs.get("metadatas"))
+        elif task == "ingest_documents":
+            agent = self.agents.get("training_data")
+            return agent.ingest_documents(kwargs.get("docs", []), kwargs.get("chunk_size", 256), kwargs.get("overlap", 32))
+        elif task == "export_training_data":
+            agent = self.agents.get("training_data")
+            return agent.export_for_finetuning(kwargs.get("path", "train_data.jsonl"))
         else:
             agent = self.agents.get("hybrid")
             return agent.hybrid_search(query, **kwargs)
@@ -70,6 +80,9 @@ if __name__ == "__main__":
     embedder = EmbeddingPipeline()
     llm = LLMGenerator()
 
+    # Training data agent
+    training_agent = TrainingDataAgent(store, embedder)
+
     # Populate store with some facts
     facts = [
         ("The Eiffel Tower is in Paris.", "fact", "eiffel"),
@@ -102,6 +115,19 @@ if __name__ == "__main__":
     orchestrator.register_agent("personalization", pers_agent)
     orchestrator.register_agent("plugin", plugin_agent)
     orchestrator.register_agent("hybrid", hybrid_agent)
+    orchestrator.register_agent("training_data", training_agent)
+
+    print("\n--- Orchestrator: Ingest Training Texts ---")
+    orchestrator.route(None, task="ingest_texts", texts=["New York is vibrant.", "Tokyo is bustling."])
+    print(training_agent.get_stats())
+
+    print("\n--- Orchestrator: Ingest Training Documents ---")
+    orchestrator.route(None, task="ingest_documents", docs=["London is historic. The Thames flows through London."], chunk_size=5, overlap=1)
+    print(training_agent.get_stats())
+
+    print("\n--- Orchestrator: Export Training Data ---")
+    orchestrator.route(None, task="export_training_data", path="train_data.jsonl")
+    print("Exported training data to train_data.jsonl")
 
     print("\n--- Orchestrator: Route to Summarizer ---")
     print(orchestrator.route("Paris", task="summarize", top_k=3))
