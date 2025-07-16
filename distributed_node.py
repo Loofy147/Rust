@@ -9,6 +9,8 @@ from dotenv import load_dotenv
 import openai
 from sentence_transformers import SentenceTransformer
 from vector_db import SimpleFaissDB
+import requests as pyrequests
+from vector_db_client import PineconeClient
 
 load_dotenv()
 API_KEY = os.environ.get('API_KEY', 'changeme')
@@ -18,6 +20,8 @@ OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
 if OPENAI_API_KEY:
     openai.api_key = OPENAI_API_KEY
 
+HUGGINGFACE_API_KEY = os.environ.get('HUGGINGFACE_API_KEY')
+
 API_URL = "http://localhost:8000"  # Adjust as needed
 NODE_ID = sys.argv[1] if len(sys.argv) > 1 else str(uuid.uuid4())
 CAPABILITIES = {"gpu": bool(random.getrandbits(1)), "vectorizer": True}
@@ -25,6 +29,10 @@ current_load = 0
 
 vectorizer = SentenceTransformer('all-MiniLM-L6-v2')
 faiss_db = SimpleFaissDB(dim=384)
+
+USE_PINECONE = bool(os.environ.get('USE_PINECONE', ''))
+if USE_PINECONE:
+    pinecone_db = PineconeClient(dim=384)
 
 def register():
     r = requests.post(f"{API_URL}/agents/register", json={"node_id": NODE_ID}, headers=HEADERS)
@@ -70,23 +78,43 @@ def process_task(task):
     print(f"Processing task: {task}")
     current_load += 1
     result = None
-    if task.get('type') == 'llm' and OPENAI_API_KEY:
+    if task.get('type') == 'llm':
         prompt = task.get('text', '')
-        try:
-            resp = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": prompt}]
-            )
-            result = resp['choices'][0]['message']['content']
-        except Exception as e:
-            result = f"LLM error: {e}"
+        if OPENAI_API_KEY:
+            try:
+                resp = openai.ChatCompletion.create(
+                    model="gpt-3.5-turbo",
+                    messages=[{"role": "user", "content": prompt}]
+                )
+                result = resp['choices'][0]['message']['content']
+            except Exception as e:
+                result = f"LLM error: {e}"
+        elif HUGGINGFACE_API_KEY:
+            try:
+                hf_headers = {"Authorization": f"Bearer {HUGGINGFACE_API_KEY}"}
+                payload = {"inputs": prompt}
+                resp = pyrequests.post(
+                    "https://api-inference.huggingface.co/models/bigscience/bloomz-560m",
+                    headers=hf_headers,
+                    json=payload,
+                    timeout=30
+                )
+                result = resp.json()[0]['generated_text'] if resp.ok else f"HF error: {resp.text}"
+            except Exception as e:
+                result = f"HF LLM error: {e}"
+        else:
+            result = "No LLM API key configured."
     elif task.get('type') == 'vector':
         text = task.get('text', '')
         vector = vectorizer.encode([text])[0]
-        faiss_db.upsert(task.get('id', str(uuid.uuid4())), vector, payload=text)
-        # Optionally perform a search
-        search_results = faiss_db.search(vector, k=3)
-        result = {'vector': vector.tolist(), 'search_results': search_results}
+        if USE_PINECONE:
+            pinecone_db.upsert(task.get('id', str(uuid.uuid4())), vector, payload={"text": text})
+            search_results = pinecone_db.search(vector, k=3)
+            result = {'vector': vector.tolist(), 'search_results': search_results}
+        else:
+            faiss_db.upsert(task.get('id', str(uuid.uuid4())), vector, payload=text)
+            search_results = faiss_db.search(vector, k=3)
+            result = {'vector': vector.tolist(), 'search_results': search_results}
     else:
         time.sleep(random.uniform(1, 3))
         result = f"Processed by {NODE_ID}: {task.get('text', '')}"

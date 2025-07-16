@@ -14,6 +14,7 @@ from fastapi.responses import Response
 import logging
 import json
 from sqlalchemy import func
+from vector_db_client import PineconeClient
 
 load_dotenv()
 API_KEY = os.environ.get('API_KEY', 'changeme')
@@ -197,11 +198,18 @@ def get_all_results(db: Session = Depends(get_db)):
 
 faiss_db = SimpleFaissDB(dim=384)
 
+USE_PINECONE = bool(os.environ.get('USE_PINECONE', ''))
+if USE_PINECONE:
+    pinecone_db = PineconeClient(dim=384)
+
 @app.post("/vector_search", dependencies=[Depends(check_api_key)])
 def vector_search(query: dict = Body(...)):
     vector = query.get('vector')
     k = query.get('k', 5)
-    results = faiss_db.search(np.array(vector), k)
+    if USE_PINECONE:
+        results = pinecone_db.search(vector, k)
+    else:
+        results = faiss_db.search(np.array(vector), k)
     return {"results": results}
 
 @app.get("/analytics/throughput", dependencies=[Depends(check_api_key)])
