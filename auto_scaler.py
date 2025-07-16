@@ -2,6 +2,12 @@ import requests
 import subprocess
 import time
 import sys
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+API_KEY = os.environ.get('API_KEY', 'changeme')
+HEADERS = {"Authorization": f"Bearer {API_KEY}"}
 
 API_URL = "http://localhost:8000"  # Adjust as needed
 MIN_NODES = 1
@@ -15,9 +21,9 @@ nodes = {}
 last_scale_action = 0
 
 while True:
-    nodes_info = requests.get(f"{API_URL}/agents/nodes").json()
-    queued = requests.get(f"{API_URL}/tasks/queued").json()
-    in_progress = requests.get(f"{API_URL}/tasks/in_progress").json()
+    nodes_info = requests.get(f"{API_URL}/agents/nodes", headers=HEADERS).json()
+    queued = requests.get(f"{API_URL}/tasks/queued", headers=HEADERS).json()
+    in_progress = requests.get(f"{API_URL}/tasks/in_progress", headers=HEADERS).json()
     now = time.time()
     for nid in list(nodes.keys()):
         if nid not in nodes_info:
@@ -38,7 +44,7 @@ while True:
         load = info.get('load', 0)
         if load == 0 and last_seen < SCALE_DOWN_IDLE and now - last_scale_action > COOLDOWN:
             print(f"[AutoScaler] Terminating idle node: {nid}")
-            requests.post(f"{API_URL}/agents/deregister", json={"node_id": nid})
+            requests.post(f"{API_URL}/agents/deregister", json={"node_id": nid}, headers=HEADERS)
             if nid in nodes:
                 nodes[nid].terminate()
                 del nodes[nid]

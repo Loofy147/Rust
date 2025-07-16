@@ -1,6 +1,12 @@
 import streamlit as st
 import requests
 import time
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+API_KEY = os.environ.get('API_KEY', 'changeme')
+HEADERS = {"Authorization": f"Bearer {API_KEY}"}
 
 API_URL = "http://localhost:8000"  # Adjust as needed
 
@@ -8,7 +14,7 @@ st.title("Distributed Agent System Dashboard (DB-backed)")
 
 st.header("Nodes/Agents")
 if st.button("Refresh Nodes"):
-    nodes = requests.get(f"{API_URL}/agents/nodes").json()
+    nodes = requests.get(f"{API_URL}/agents/nodes", headers=HEADERS).json()
     st.write(nodes)
     for nid, info in nodes.items():
         st.write(f"Node: {nid}")
@@ -19,17 +25,17 @@ if st.button("Refresh Nodes"):
 
 st.header("Queued Tasks")
 if st.button("Show Queued Tasks"):
-    queued = requests.get(f"{API_URL}/tasks/queued").json()
+    queued = requests.get(f"{API_URL}/tasks/queued", headers=HEADERS).json()
     st.write(queued)
 
 st.header("In Progress Tasks")
 if st.button("Show In Progress"):
-    in_progress = requests.get(f"{API_URL}/tasks/in_progress").json()
+    in_progress = requests.get(f"{API_URL}/tasks/in_progress", headers=HEADERS).json()
     st.write(in_progress)
 
 st.header("Results")
 if st.button("Show All Results"):
-    results = requests.get(f"{API_URL}/tasks/results").json()
+    results = requests.get(f"{API_URL}/tasks/results", headers=HEADERS).json()
     st.write(results)
 
 with st.form("Submit Task"):
@@ -42,5 +48,5 @@ with st.form("Submit Task"):
         except Exception:
             req = {}
         payload = {"text": text, "required": req}
-        r = requests.post(f"{API_URL}/tasks/submit", json=payload)
+        r = requests.post(f"{API_URL}/tasks/submit", json=payload, headers=HEADERS)
         st.write(r.json())
