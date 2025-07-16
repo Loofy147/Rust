@@ -10,3 +10,9 @@ prometheus_fastapi_instrumentator
 loguru
 celery
 redis
+opentelemetry-api
+opentelemetry-sdk
+opentelemetry-instrumentation
+opentelemetry-instrumentation-fastapi
+opentelemetry-instrumentation-celery
+opentelemetry-exporter-otlp

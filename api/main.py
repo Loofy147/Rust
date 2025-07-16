@@ -9,8 +9,22 @@ from agent.logging_config import logger
 from celery.result import AsyncResult
 from celery_worker import process_task_celery, celery_app
 
+# OpenTelemetry tracing
+if os.getenv("OTEL_ENABLED", "0") == "1":
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+    from opentelemetry import trace
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+    trace.set_tracer_provider(TracerProvider())
+    span_processor = BatchSpanProcessor(OTLPSpanExporter())
+    trace.get_tracer_provider().add_span_processor(span_processor)
+
 app = FastAPI()
 Instrumentator().instrument(app).expose(app)
+
+if os.getenv("OTEL_ENABLED", "0") == "1":
+    FastAPIInstrumentor.instrument_app(app)
 
 tasks = {}
 ws_connections = {}
