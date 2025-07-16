@@ -4,7 +4,7 @@ import axios from 'axios';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-function TaskStatus({ auth, taskId }) {
+function TaskStatus({ auth, taskId, updateTaskInHistory }) {
   const [status, setStatus] = useState('pending');
   const [result, setResult] = useState('');
   const [error, setError] = useState('');
@@ -28,10 +28,12 @@ function TaskStatus({ auth, taskId }) {
         if (data.error) {
           setError(data.error);
           wsRef.current.close();
+          updateTaskInHistory(taskId, 'failed', data.error);
           return;
         }
         setStatus(data.status);
         if (data.result) setResult(data.result);
+        updateTaskInHistory(taskId, data.status, data.result || '');
       };
       wsRef.current.onerror = () => {
         wsRef.current.close();
@@ -49,6 +51,7 @@ function TaskStatus({ auth, taskId }) {
         .then(resp => {
           setStatus(resp.data.status);
           if (resp.data.result) setResult(resp.data.result);
+          updateTaskInHistory(taskId, resp.data.status, resp.data.result || '');
           if (!resp.data.result && active) setTimeout(pollStatus, 2000);
         })
         .catch(e => setError('Polling failed'));
@@ -72,7 +75,7 @@ function TaskStatus({ auth, taskId }) {
           <pre style={{ background: '#f5f5f5', padding: 12, borderRadius: 4 }}>{result}</pre>
         </Box>
       )}
-      <Button variant="outlined" sx={{ mt: 2 }} onClick={() => window.location.reload()}>Submit Another Task</Button>
+      <Button variant="outlined" sx={{ mt: 2 }} onClick={() => updateTaskInHistory(taskId, '', '')}>Submit Another Task</Button>
     </Box>
   );
 }

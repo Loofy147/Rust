@@ -4,7 +4,7 @@ import axios from 'axios';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-function TaskForm({ auth, setTaskId }) {
+function TaskForm({ auth, onTaskSubmit }) {
   const [input, setInput] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -18,7 +18,7 @@ function TaskForm({ auth, setTaskId }) {
     setError(''); setSuccess(''); setLoading(true);
     try {
       const resp = await axios.post(`${API_URL}/tasks`, { input }, { headers });
-      setTaskId(resp.data.id);
+      onTaskSubmit(resp.data.id, input);
       setSuccess(`Task submitted! Task ID: ${resp.data.id}`);
     } catch (e) {
       setError(e.response?.data?.detail || 'Submission failed');
