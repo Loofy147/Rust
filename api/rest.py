@@ -15,6 +15,8 @@ import logging
 import json
 from sqlalchemy import func
 from vector_db_client import PineconeClient
+from auth import create_token, decode_token, authenticate_user
+from fastapi.security.utils import get_authorization_scheme_param
 
 load_dotenv()
 API_KEY = os.environ.get('API_KEY', 'changeme')
@@ -24,9 +26,32 @@ app = FastAPI()
 with open('config.yaml') as f:
     config = yaml.safe_load(f)
 
-def check_api_key(authorization: str = Header(...)):
-    if authorization != f"Bearer {API_KEY}":
-        raise HTTPException(status_code=401, detail="Invalid or missing API key.")
+@app.post("/login")
+def login(form: dict = Body(...)):
+    username = form.get("username")
+    password = form.get("password")
+    user = authenticate_user(username, password)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    token = create_token(username, user["tenant"])
+    return {"access_token": token, "token_type": "bearer"}
+
+# Updated auth dependency: accept JWT or API key
+def check_auth(authorization: str = Header(...)):
+    scheme, param = get_authorization_scheme_param(authorization)
+    if scheme.lower() == "bearer":
+        # Try JWT first
+        try:
+            decode_token(param)
+            return
+        except HTTPException:
+            # Fallback to API key
+            if param == API_KEY:
+                return
+            raise
+    elif authorization == f"Bearer {API_KEY}":
+        return
+    raise HTTPException(status_code=401, detail="Invalid or missing credentials.")
 
 # Prometheus metrics
 TASKS_SUBMITTED = Counter('tasks_submitted', 'Total tasks submitted')
@@ -59,7 +84,7 @@ def metrics():
 def health():
     return {"status": "ok"}
 
-@app.post("/agents/register", dependencies=[Depends(check_api_key)])
+@app.post("/agents/register", dependencies=[Depends(check_auth)])
 def register_node(payload: dict = Body(...), db: Session = Depends(get_db)):
     node_id = payload.get('node_id')
     node = db.query(Node).filter_by(node_id=node_id).first()
@@ -75,7 +100,7 @@ def register_node(payload: dict = Body(...), db: Session = Depends(get_db)):
     NODES_REGISTERED.set(db.query(Node).count())
     return {"status": "registered", "node_id": node_id}
 
-@app.post("/agents/heartbeat", dependencies=[Depends(check_api_key)])
+@app.post("/agents/heartbeat", dependencies=[Depends(check_auth)])
 def node_heartbeat(payload: dict = Body(...), db: Session = Depends(get_db)):
     node_id = payload.get('node_id')
     capabilities = payload.get('capabilities', {})
@@ -90,13 +115,13 @@ def node_heartbeat(payload: dict = Body(...), db: Session = Depends(get_db)):
         return {"status": "heartbeat", "node_id": node_id}
     return {"error": "Node not registered"}
 
-@app.get("/agents/nodes", dependencies=[Depends(check_api_key)])
+@app.get("/agents/nodes", dependencies=[Depends(check_auth)])
 def list_nodes(db: Session = Depends(get_db)):
     now = time.time()
     nodes = db.query(Node).all()
     return {n.node_id: {"status": n.status, "capabilities": n.capabilities, "load": n.load, "last_seen_delta": now-n.last_seen} for n in nodes}
 
-@app.post("/agents/deregister", dependencies=[Depends(check_api_key)])
+@app.post("/agents/deregister", dependencies=[Depends(check_auth)])
 def deregister_node(payload: dict = Body(...), db: Session = Depends(get_db)):
     node_id = payload.get('node_id')
     node = db.query(Node).filter_by(node_id=node_id).first()
@@ -107,7 +132,7 @@ def deregister_node(payload: dict = Body(...), db: Session = Depends(get_db)):
         return {"status": "deregistered", "node_id": node_id}
     return {"error": "Node not found"}
 
-@app.post("/tasks/submit", dependencies=[Depends(check_api_key)])
+@app.post("/tasks/submit", dependencies=[Depends(check_auth)])
 def submit_task(payload: dict = Body(...), db: Session = Depends(get_db)):
     task_id = payload.get('id') or str(uuid.uuid4())
     payload['id'] = task_id
@@ -139,14 +164,14 @@ def submit_task(payload: dict = Body(...), db: Session = Depends(get_db)):
     else:
         return {"status": "queued", "reason": "no suitable node", "task": payload, "task_id": task_id}
 
-@app.get("/tasks/status/{task_id}", dependencies=[Depends(check_api_key)])
+@app.get("/tasks/status/{task_id}", dependencies=[Depends(check_auth)])
 def get_task_status_api(task_id: str, db: Session = Depends(get_db)):
     task = db.query(Task).filter_by(id=task_id).first()
     if not task:
         return {}
     return {"status": task.status, "node_id": task.node_id, "result": task.result, "payload": task.payload}
 
-@app.post("/tasks/result", dependencies=[Depends(check_api_key)])
+@app.post("/tasks/result", dependencies=[Depends(check_auth)])
 def report_result(payload: dict = Body(...), db: Session = Depends(get_db)):
     node_id = payload.get('node_id')
     task_id = payload.get('task_id')
@@ -162,7 +187,7 @@ def report_result(payload: dict = Body(...), db: Session = Depends(get_db)):
         logger.info(f"Task completed: {task_id}")
     return {"status": "result_received", "task_id": task_id}
 
-@app.post("/tasks/reject", dependencies=[Depends(check_api_key)])
+@app.post("/tasks/reject", dependencies=[Depends(check_auth)])
 def reject_task(payload: dict = Body(...), db: Session = Depends(get_db)):
     task = payload.get('task')
     task_id = task.get('id')
@@ -173,7 +198,7 @@ def reject_task(payload: dict = Body(...), db: Session = Depends(get_db)):
         db.commit()
     return {"status": "requeued", "task": task}
 
-@app.get("/tasks/queued", dependencies=[Depends(check_api_key)])
+@app.get("/tasks/queued", dependencies=[Depends(check_auth)])
 def get_queued_tasks(db: Session = Depends(get_db)):
     now = time.time()
     timeout = 30
@@ -188,11 +213,11 @@ def get_queued_tasks(db: Session = Depends(get_db)):
             queued.append(t.payload)
     return queued
 
-@app.get("/tasks/in_progress", dependencies=[Depends(check_api_key)])
+@app.get("/tasks/in_progress", dependencies=[Depends(check_auth)])
 def get_in_progress_tasks(db: Session = Depends(get_db)):
     return {t.id: {"status": t.status, "node_id": t.node_id, "payload": t.payload} for t in db.query(Task).filter_by(status='assigned')}
 
-@app.get("/tasks/results", dependencies=[Depends(check_api_key)])
+@app.get("/tasks/results", dependencies=[Depends(check_auth)])
 def get_all_results(db: Session = Depends(get_db)):
     return {t.id: {"result": t.result, "node_id": t.node_id, "payload": t.payload} for t in db.query(Task).filter_by(status='done')}
 
@@ -202,7 +227,7 @@ USE_PINECONE = bool(os.environ.get('USE_PINECONE', ''))
 if USE_PINECONE:
     pinecone_db = PineconeClient(dim=384)
 
-@app.post("/vector_search", dependencies=[Depends(check_api_key)])
+@app.post("/vector_search", dependencies=[Depends(check_auth)])
 def vector_search(query: dict = Body(...)):
     vector = query.get('vector')
     k = query.get('k', 5)
@@ -212,26 +237,26 @@ def vector_search(query: dict = Body(...)):
         results = faiss_db.search(np.array(vector), k)
     return {"results": results}
 
-@app.get("/analytics/throughput", dependencies=[Depends(check_api_key)])
+@app.get("/analytics/throughput", dependencies=[Depends(check_auth)])
 def analytics_throughput(db: Session = Depends(get_db)):
     now = time.time()
     one_hour_ago = now - 3600
     count = db.query(Task).filter(Task.completed_at != None, Task.completed_at > one_hour_ago).count()
     return {"tasks_completed_last_hour": count}
 
-@app.get("/analytics/errors", dependencies=[Depends(check_api_key)])
+@app.get("/analytics/errors", dependencies=[Depends(check_auth)])
 def analytics_errors(db: Session = Depends(get_db)):
     # Assume failed tasks have 'failed' in result or status
     failed = db.query(Task).filter(Task.status == 'done', Task.result.ilike('%error%')).count()
     return {"failed_tasks": failed}
 
-@app.get("/analytics/node_uptime", dependencies=[Depends(check_api_key)])
+@app.get("/analytics/node_uptime", dependencies=[Depends(check_auth)])
 def analytics_node_uptime(db: Session = Depends(get_db)):
     now = time.time()
     nodes = db.query(Node).all()
     return {n.node_id: {"last_seen_secs_ago": now-n.last_seen} for n in nodes}
 
-@app.get("/analytics/task_types", dependencies=[Depends(check_api_key)])
+@app.get("/analytics/task_types", dependencies=[Depends(check_auth)])
 def analytics_task_types(db: Session = Depends(get_db)):
     rows = db.query(Task.payload).all()
     type_counts = {}
