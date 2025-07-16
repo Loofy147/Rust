@@ -1,0 +1,14 @@
+workflow_id: demo_workflow
+steps:
+  - id: plan
+    agent: planner1
+  - id: retrieve
+    agent: retriever1
+    depends_on: [plan]
+  - id: summarize
+    agent: custom_agent
+    depends_on: [retrieve]
+  - id: evaluate
+    agent: evaluator1
+    depends_on: [summarize]
+dag: true

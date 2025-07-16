@@ -1,68 +1,58 @@
-# Multi-Agent Cooperative Framework (Advanced Distributed)
+# Advanced Multi-Agent Orchestration Platform
 
 ## Features
-- Knowledge Graph (NetworkX, spaCy, Neo4j)
-- Vector Store (FAISS, Elasticsearch, Sentence Transformers)
-- Modular, threaded, and distributed agents (Ray, Celery)
-- Orchestrator with CLI, REST API (FastAPI), Ray, and Celery support
-- Distributed scaling (Ray, Celery, Redis)
-- External API integration (OpenAI, HuggingFace, LangChain, Slack, etc.)
-- Advanced agent types: Summarization, Translation, Notification, Audit
-- Agent heartbeats, health checks, dynamic scaling, and pluggable pipelines
-- Centralized logging, tracing, and compliance
+- Dynamic agent registry, workflow engine (DAG/chain/event), event bus, and centralized monitoring
+- REST & WebSocket API for orchestration, agent management, and real-time updates
+- Plugin loader with agent pools, load balancing, and hot-reload
+- Self-optimization agents (heuristic and RL-based)
+- Example agent plugins: LLM, Retriever, Summarizer, Evaluator, Planner, Memory, Supervisor
+- CLI utility for orchestrator control and diagnostics
+- Full test suite and CI/CD pipeline
+- Docker, docker-compose, and Kubernetes deployment
+- Monitoring and logging (Prometheus, OpenTelemetry)
 
-## Setup
-```bash
-pip install -r requirements.txt
-python -m spacy download en_core_web_sm
-# For Celery: start Redis server (default: redis-server)
-# For Ray: ray start --head
-```
+## Quick Start
+1. **Install dependencies**
+   ```bash
+   pip install -r requirements.txt
+   python -m spacy download en_core_web_sm
+   ```
+2. **Run the orchestrator**
+   ```bash
+   python advanced_orchestrator/orchestrator.py
+   ```
+3. **Use the CLI**
+   ```bash
+   python advanced_orchestrator/cli.py list-agents
+   python advanced_orchestrator/cli.py submit-workflow config/example_workflow.yaml
+   ```
+4. **Deploy on Kubernetes**
+   See `k8s/README.md` for manifests and scaling.
 
-## Usage
-- Place a text file as `sample.txt` in the root.
-- Run: `python orchestrator.py` (threaded/REST mode)
-- Run: `python distributed/ray_orchestrator.py` (Ray distributed mode)
-- Run: `celery -A distributed.celery_base.celery_app worker --loglevel=info` (Celery distributed mode)
-- REST API available at `http://localhost:8000`
+## Plugins & Agents
+- Drop agent plugins in `config/plugins/` and register in `config.yaml`.
+- Example plugins: `custom_llm_agent.py`, `retriever_agent.py`, `summarizer_agent.py`, `evaluator_agent.py`, `planner_agent.py`, `memory_agent.py`, `supervisor_agent.py`, `self_optimization_agent.py`, `self_optimization_rl_agent.py`.
 
-## Distributed Orchestrators
-- **Ray**: Launches Ray agents as distributed actors, supports dynamic scaling, health checks, and message passing.
-- **Celery**: Launches Celery agents as distributed tasks, supports robust queueing, retries, and monitoring (Flower).
+## Workflows
+- Define workflows in YAML (see `config/example_workflow.yaml`).
+- Submit via CLI or REST API.
 
-## Integrations
-- **Elasticsearch**: Distributed vector/text search (`integrations/elasticsearch_store.py`)
-- **Neo4j**: Persistent, queryable knowledge graph (`integrations/neo4j_kg.py`)
-- **LangChain**: Advanced LLM orchestration and chaining
-- **OpenAI/HuggingFace**: LLMs for summarization, translation, codegen, etc.
+## Monitoring
+- Prometheus metrics at ports 8001/8002 (see `monitoring/prometheus.yml`).
+- Logs and traces via OpenTelemetry and logging modules.
 
-## Advanced Practices
-- Agent heartbeats, health checks, and auto-recovery
-- Dynamic agent scaling (Ray/Celery)
-- Task prioritization and scheduling
-- Distributed logging and tracing
-- Pluggable agent registry and pipelines
-- Secure API key management (env vars, secret managers)
-- Graceful shutdown and restart
+## Testing
+- Run all tests:
+  ```bash
+  python -m unittest discover tests
+  ```
 
-## Agents
-- **IngestionAgent**: File/API ingestion
-- **ProcessingAgent**: Embedding, KG update, hybrid search
-- **DistributionAgent**: Routing, logging
-- **ManagerAgent**: Orchestration, health checks
-- **WebScraperAgent**: Scrapes web pages, sends text to processing
-- **CodeGeneratorAgent**: Generates code using OpenAI API
-- **MaintenanceAgent**: Monitors, restarts, cleans up
-- **SummarizationAgent**: Summarizes text (Ray & Celery)
-- **TranslationAgent**: Translates text (Ray & Celery)
-- **NotificationAgent**: Sends notifications (Ray & Celery)
-- **AuditAgent**: Audits and logs agent actions (Ray & Celery)
+## CI/CD
+- See `.github/workflows/ci.yml` for GitHub Actions pipeline.
 
 ## Extending
-- Add new agents in `agents/`
-- Plug in new vector/graph backends in `core/` or `integrations/`
-- Add REST endpoints in `orchestrator.py` (see FastAPI docs)
-- Register new agent types in Ray/Celery orchestrators
+- Add new agent plugins, workflows, or orchestration logic as needed.
+- Use the plugin loader for hot-reload and scaling.
 
 ## License
 MIT
