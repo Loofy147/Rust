@@ -18,3 +18,4 @@ opentelemetry-instrumentation-celery
 opentelemetry-exporter-otlp
 python-jose
 passlib[bcrypt]
+slowapi

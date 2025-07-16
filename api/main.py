@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Depends, WebSocket, WebSocketDisconnect, Request
 from api.schemas import TaskRequest, TaskResult
 from api.auth import get_current_user, authenticate_user, create_access_token
 from uuid import uuid4
@@ -8,6 +8,9 @@ from agent.plugin_loader import load_plugins
 from agent.logging_config import logger
 from celery.result import AsyncResult
 from celery_worker import process_task_celery, celery_app
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 # OpenTelemetry tracing
 if os.getenv("OTEL_ENABLED", "0") == "1":
@@ -20,7 +23,10 @@ if os.getenv("OTEL_ENABLED", "0") == "1":
     span_processor = BatchSpanProcessor(OTLPSpanExporter())
     trace.get_tracer_provider().add_span_processor(span_processor)
 
+limiter = Limiter(key_func=get_remote_address)
 app = FastAPI()
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 Instrumentator().instrument(app).expose(app)
 
 if os.getenv("OTEL_ENABLED", "0") == "1":
@@ -42,7 +48,8 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     return {"access_token": access_token, "token_type": "bearer"}
 
 @app.post("/tasks", response_model=TaskResult)
-async def submit_task(task: TaskRequest, user=Depends(get_current_user)):
+@limiter.limit("5/minute")
+async def submit_task(request: Request, task: TaskRequest, user=Depends(get_current_user)):
     task_id = str(uuid4())
     tasks[task_id] = {"status": "pending", "result": None, "celery_id": None}
     celery_result = process_task_celery.apply_async(args=[task_id, task.input])
@@ -50,7 +57,8 @@ async def submit_task(task: TaskRequest, user=Depends(get_current_user)):
     return TaskResult(id=task_id, status=tasks[task_id]["status"], result=tasks[task_id]["result"])
 
 @app.get("/tasks/{task_id}", response_model=TaskResult)
-async def get_task(task_id: str, user=Depends(get_current_user)):
+@limiter.limit("20/minute")
+async def get_task(request: Request, task_id: str, user=Depends(get_current_user)):
     if task_id not in tasks:
         raise HTTPException(status_code=404, detail="Task not found")
     celery_id = tasks[task_id]["celery_id"]
