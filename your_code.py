@@ -82,7 +82,19 @@ class AttentionDataConsistencyManager:
         self.consistency_locks: Dict[str, threading.RLock] = defaultdict(threading.RLock)
         self.update_queue: queue.Queue = queue.Queue()
         self.consistency_violations: List[Dict[str, Any]] = []
-        
+        self._callbacks: Dict[str, List[callable]] = defaultdict(list)
+    
+    def register_callback(self, event: str, callback: callable):
+        """Register a callback for a specific event (e.g., 'consistency_violation')."""
+        self._callbacks[event].append(callback)
+    
+    def _trigger_callbacks(self, event: str, *args, **kwargs):
+        for cb in self._callbacks[event]:
+            try:
+                cb(*args, **kwargs)
+            except Exception as e:
+                logger.error(f"Callback for event '{event}' failed: {e}")
+    
     def register_tensor(self, tensor_id: str, tensor: torch.Tensor) -> AttentionTensorMetadata:
         """Register tensor with comprehensive metadata tracking"""
         with self.consistency_locks[tensor_id]:
@@ -130,6 +142,7 @@ class AttentionDataConsistencyManager:
         }
         self.consistency_violations.append(violation)
         logger.warning(f"Consistency violation detected: {violation}")
+        self._trigger_callbacks('consistency_violation', violation)
 
 class AttentionWeightUpdateOrchestrator:
     """Orchestrates sophisticated attention weight updates with consistency guarantees"""
@@ -285,7 +298,20 @@ class MultiHeadAttentionDataAgent:
             'failed_updates': 0
         }
         
+        self._callbacks: Dict[str, List[callable]] = defaultdict(list)
+        
         logger.info(f"Initialized MultiHeadAttentionDataAgent with {num_heads} heads")
+    
+    def register_callback(self, event: str, callback: callable):
+        """Register a callback for a specific event (e.g., 'after_update')."""
+        self._callbacks[event].append(callback)
+    
+    def _trigger_callbacks(self, event: str, *args, **kwargs):
+        for cb in self._callbacks[event]:
+            try:
+                cb(*args, **kwargs)
+            except Exception as e:
+                logger.error(f"Callback for event '{event}' failed: {e}")
     
     def _initialize_attention_weights(self) -> Dict[str, torch.Tensor]:
         """Initialize attention weight matrices with proper scaling"""
@@ -383,6 +409,7 @@ class MultiHeadAttentionDataAgent:
                     self.attention_weights[tensor_id] = updated_tensor
             
             self.performance_metrics['successful_updates'] += 1
+            self._trigger_callbacks('after_update', head_id=head_id, update_type=update_type, update_params=update_params)
             
         except Exception as e:
             self.performance_metrics['failed_updates'] += 1
@@ -505,3 +532,11 @@ if __name__ == "__main__":
     agent.save_state("agent_state.pth")
     agent.load_state("agent_state.pth")
     print("State save/load roundtrip successful.")
+
+    # Register example callbacks
+    def on_update(**kwargs):
+        print(f"[Callback] After update: {kwargs}")
+    def on_violation(violation):
+        print(f"[Callback] Consistency violation: {violation}")
+    agent.register_callback('after_update', on_update)
+    agent.consistency_manager.register_callback('consistency_violation', on_violation)
