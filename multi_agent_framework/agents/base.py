@@ -2,6 +2,7 @@ import threading
 import queue
 import logging
 import time
+import traceback
 
 class Agent(threading.Thread):
     def __init__(self, name, inbox, outboxes, config):
@@ -48,3 +49,6 @@ class Agent(threading.Thread):
     def stop(self):
         self.running = False
         self.logger.info("Agent stopped.")
+
+    def log_error(self, error, task):
+        self.logger.error(f"Error in {self.name}: {error}\nTask: {task}\nTrace: {traceback.format_exc()}")

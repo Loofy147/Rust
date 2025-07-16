@@ -11,7 +11,7 @@ class RetrieverAgent(BaseAgent):
             {'id': 3, 'text': 'Details on Z.'}
         ]
 
-    def process(self, task):
+    def _process(self, task):
         query = task.get('query')
         # For demo: return all docs containing a keyword from query
         results = [doc for doc in self.documents if any(word in doc['text'].lower() for word in query.lower().split())]

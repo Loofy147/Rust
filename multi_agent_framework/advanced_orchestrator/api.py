@@ -1,9 +1,10 @@
-from fastapi import FastAPI, WebSocket, Request
+from fastapi import FastAPI, WebSocket, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import asyncio
 import os
 from advanced_orchestrator.orchestrator import orchestrator
+import traceback
 
 app = FastAPI()
 
@@ -22,6 +23,18 @@ EVENT_BUS = None
 
 # Store review queue in memory for demo
 REVIEW_QUEUE = []
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "status": "error",
+            "error_type": type(exc).__name__,
+            "message": str(exc),
+            "trace": traceback.format_exc()
+        },
+    )
 
 @app.post("/register_agent")
 async def register_agent(request: Request):

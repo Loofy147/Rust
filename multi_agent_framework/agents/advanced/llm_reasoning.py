@@ -8,7 +8,7 @@ class LLMReasoningAgent(BaseAgent):
         self.model = model
         self.api_key = os.environ.get('OPENAI_API_KEY')
 
-    def process(self, task):
+    def _process(self, task):
         question = task.get('question')
         context = task.get('context', '')
         feedback = task.get('feedback', '')

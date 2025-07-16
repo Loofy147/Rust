@@ -70,35 +70,55 @@ class AdvancedOrchestrator:
             time.sleep(5)
 
     def automated_reasoning_pipeline(self, workflow_id, question, feedback=None):
-        # Step 1: Retrieve context
-        retrieval = self.retriever_agent.process({'query': question})
-        context = retrieval['context']
-        # Step 2: LLM reasoning
-        llm_result = self.llm_agent.process({'question': question, 'context': context, 'feedback': feedback})
-        self.workflow_engine.record_step_output(workflow_id, 'retrieval', retrieval)
-        self.workflow_engine.record_step_output(workflow_id, 'llm_reasoning', llm_result)
-        # Step 3: Feedback/clarification loop
-        if llm_result['needs_clarification']:
-            print(f"[LLM] Needs clarification: {llm_result['needs_clarification']}")
-            # Escalate to HITL for clarification
+        try:
+            # Step 1: Retrieve context
+            retrieval = self.retriever_agent.process({'query': question})
+            if retrieval.get('status') == 'error':
+                self.event_bus.publish('error', {'workflow_id': workflow_id, 'step': 'retrieval', 'error': retrieval})
+                self.workflow_engine.log_feedback(workflow_id, 'retrieval', {'type': 'error', 'error': retrieval})
+                return retrieval
+            context = retrieval['context']
+            # Step 2: LLM reasoning
+            llm_result = self.llm_agent.process({'question': question, 'context': context, 'feedback': feedback})
+            if llm_result.get('status') == 'error':
+                self.event_bus.publish('error', {'workflow_id': workflow_id, 'step': 'llm_reasoning', 'error': llm_result})
+                self.workflow_engine.log_feedback(workflow_id, 'llm_reasoning', {'type': 'error', 'error': llm_result})
+                return llm_result
+            self.workflow_engine.record_step_output(workflow_id, 'retrieval', retrieval)
+            self.workflow_engine.record_step_output(workflow_id, 'llm_reasoning', llm_result)
+            # Step 3: Feedback/clarification loop
+            if llm_result['needs_clarification']:
+                print(f"[LLM] Needs clarification: {llm_result['needs_clarification']}")
+                # Escalate to HITL for clarification
+                self.human_in_the_loop_queue.append({
+                    'workflow_id': workflow_id,
+                    'step': 'llm_reasoning',
+                    'question': llm_result['needs_clarification'],
+                    'context': context
+                })
+                self.workflow_engine.log_feedback(workflow_id, 'llm_reasoning', {'type': 'clarification', 'message': llm_result['needs_clarification']})
+                return None
+            # Step 4: HITL QA before production
             self.human_in_the_loop_queue.append({
                 'workflow_id': workflow_id,
-                'step': 'llm_reasoning',
-                'question': llm_result['needs_clarification'],
+                'step': 'qa',
+                'llm_output': llm_result,
                 'context': context
             })
-            self.workflow_engine.log_feedback(workflow_id, 'llm_reasoning', {'type': 'clarification', 'message': llm_result['needs_clarification']})
-            return None
-        # Step 4: HITL QA before production
-        self.human_in_the_loop_queue.append({
-            'workflow_id': workflow_id,
-            'step': 'qa',
-            'llm_output': llm_result,
-            'context': context
-        })
-        self.workflow_engine.log_feedback(workflow_id, 'llm_reasoning', {'type': 'output', 'message': llm_result})
-        print(f"[Orchestrator] Output ready for HITL QA: {llm_result['answer']}")
-        return llm_result
+            self.workflow_engine.log_feedback(workflow_id, 'llm_reasoning', {'type': 'output', 'message': llm_result})
+            print(f"[Orchestrator] Output ready for HITL QA: {llm_result['answer']}")
+            return llm_result
+        except Exception as e:
+            import traceback
+            error_info = {
+                'status': 'error',
+                'error_type': type(e).__name__,
+                'message': str(e),
+                'trace': traceback.format_exc()
+            }
+            self.event_bus.publish('error', {'workflow_id': workflow_id, 'step': 'orchestrator', 'error': error_info})
+            self.workflow_engine.log_feedback(workflow_id, 'orchestrator', {'type': 'error', 'error': error_info})
+            return error_info
 
     def run(self):
         self.start_api()

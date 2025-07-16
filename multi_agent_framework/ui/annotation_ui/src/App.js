@@ -19,6 +19,7 @@ function App() {
   const [qaActionStatus, setQaActionStatus] = useState('');
   const [qaEdit, setQaEdit] = useState('');
   const [qaFeedback, setQaFeedback] = useState('');
+  const [error, setError] = useState('');
 
   useEffect(() => {
     if (user) fetchSamples();
@@ -28,10 +29,14 @@ function App() {
   }, [user]);
 
   const fetchSamples = async () => {
-    const res = await axios.get(`${API_BASE_URL}/annotation_samples`);
-    setSamples(res.data);
-    setProgress(0);
-    setLabels({});
+    try {
+      const res = await axios.get(`${API_BASE_URL}/annotation_samples`);
+      setSamples(res.data);
+      setProgress(0);
+      setLabels({});
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Failed to fetch samples');
+    }
   };
 
   const handleLabelChange = (idx, value) => {
@@ -40,16 +45,24 @@ function App() {
 
   const handleSubmit = async (idx) => {
     setSubmitting(true);
-    await axios.post(`${API_BASE_URL}/submit_annotation`, { index: idx, label: labels[idx], user });
-    setProgress((prev) => prev + 1);
+    try {
+      await axios.post(`${API_BASE_URL}/submit_annotation`, { index: idx, label: labels[idx], user });
+      setProgress((prev) => prev + 1);
+      setSamples(samples.filter((s, i) => i !== idx));
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Failed to submit annotation');
+    }
     setSubmitting(false);
-    setSamples(samples.filter((s, i) => i !== idx));
   };
 
   const handleReview = async (idx, status, comment = '') => {
-    await axios.post(`${API_BASE_URL}/review_annotation`, { index: idx, status, reviewer: user, comment });
-    setSnackbar({ open: true, message: `Annotation ${status}`, severity: status === 'approved' ? 'success' : 'warning' });
-    fetchReviewQueue();
+    try {
+      await axios.post(`${API_BASE_URL}/review_annotation`, { index: idx, status, reviewer: user, comment });
+      setSnackbar({ open: true, message: `Annotation ${status}`, severity: status === 'approved' ? 'success' : 'warning' });
+      fetchReviewQueue();
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Failed to review annotation');
+    }
   };
 
   const fetchReviewQueue = async () => {
@@ -64,23 +77,31 @@ function App() {
   };
 
   const fetchQaQueue = async () => {
-    const res = await axios.get(`${API_BASE_URL}/hitl_queue`);
-    setQaQueue(res.data);
+    try {
+      const res = await axios.get(`${API_BASE_URL}/hitl_queue`);
+      setQaQueue(res.data);
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Failed to fetch QA queue');
+    }
   };
 
   const handleQaAction = async (task, action) => {
-    await axios.post(`${API_BASE_URL}/hitl_qa`, {
-      workflow_id: task.workflow_id,
-      step: task.step,
-      action,
-      edited_answer: qaEdit,
-      feedback: qaFeedback,
-      user
-    });
-    setQaActionStatus(`Action '${action}' submitted.`);
-    setQaEdit('');
-    setQaFeedback('');
-    fetchQaQueue();
+    try {
+      await axios.post(`${API_BASE_URL}/hitl_qa`, {
+        workflow_id: task.workflow_id,
+        step: task.step,
+        action,
+        edited_answer: qaEdit,
+        feedback: qaFeedback,
+        user
+      });
+      setQaActionStatus(`Action '${action}' submitted.`);
+      setQaEdit('');
+      setQaFeedback('');
+      fetchQaQueue();
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Failed to submit QA action');
+    }
   };
 
   const handleLogin = () => {
@@ -229,6 +250,9 @@ function App() {
       )}
       <Snackbar open={snackbar.open} autoHideDuration={3000} onClose={() => setSnackbar({ ...snackbar, open: false })}>
         <Alert severity={snackbar.severity}>{snackbar.message}</Alert>
+      </Snackbar>
+      <Snackbar open={!!error} autoHideDuration={5000} onClose={() => setError('')}>
+        <Alert severity="error">{error}</Alert>
       </Snackbar>
     </div>
   );
