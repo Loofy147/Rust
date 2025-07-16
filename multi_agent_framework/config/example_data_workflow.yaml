@@ -7,9 +7,12 @@ steps:
   - id: clean
     agent: data_cleaning1
     depends_on: [ingest]
+  - id: validate
+    agent: data_validation1
+    depends_on: [clean]
   - id: transform
     agent: data_transformation1
-    depends_on: [clean]
+    depends_on: [validate]
   - id: label
     agent: data_labeling1
     depends_on: [transform]

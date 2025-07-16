@@ -55,7 +55,8 @@ This document describes the advanced features implemented in the multi-agent orc
 - **DataLabelingAgent**: Applies or manages labels (manual, weak, or auto).
 - **DataSplitAgent**: Splits data into train/val/test sets.
 - **DataExportAgent**: Prepares data for downstream ML/LLM training.
-- **Usage**: See `config/example_data_workflow.yaml` for a sample workflow chaining these agents. Register your data agents in `config/config.yaml`.
+- **DataValidationAgent**: Checks schema, computes statistics, and flags anomalies/outliers.
+- **Usage**: See `config/example_data_workflow.yaml` for a sample workflow chaining these agents. Register your data agents in `config/config.yaml`. The validation step produces a report for monitoring and compliance.
 
 ---
 

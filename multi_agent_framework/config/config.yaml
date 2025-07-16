@@ -23,6 +23,8 @@ agents:
     type: data_split
   - id: data_export1
     type: data_export
+  - id: data_validation1
+    type: data_validation
 
 workflows:
   - id: example_workflow
