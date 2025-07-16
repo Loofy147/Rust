@@ -9,6 +9,8 @@ import os
 from dotenv import load_dotenv
 from vector_db import SimpleFaissDB
 import numpy as np
+from prometheus_client import Counter, Gauge, generate_latest, CONTENT_TYPE_LATEST
+from fastapi.responses import Response
 
 load_dotenv()
 API_KEY = os.environ.get('API_KEY', 'changeme')
@@ -22,6 +24,15 @@ def check_api_key(authorization: str = Header(...)):
     if authorization != f"Bearer {API_KEY}":
         raise HTTPException(status_code=401, detail="Invalid or missing API key.")
 
+# Prometheus metrics
+TASKS_SUBMITTED = Counter('tasks_submitted', 'Total tasks submitted')
+TASKS_COMPLETED = Counter('tasks_completed', 'Total tasks completed')
+NODES_REGISTERED = Gauge('nodes_registered', 'Current registered nodes')
+
+@app.get("/metrics")
+def metrics():
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
 @app.post("/agents/register", dependencies=[Depends(check_api_key)])
 def register_node(payload: dict = Body(...), db: Session = Depends(get_db)):
     node_id = payload.get('node_id')
@@ -33,6 +44,7 @@ def register_node(payload: dict = Body(...), db: Session = Depends(get_db)):
         node.status = 'registered'
         node.last_seen = time.time()
     db.commit()
+    NODES_REGISTERED.set(db.query(Node).count())
     return {"status": "registered", "node_id": node_id}
 
 @app.post("/agents/heartbeat", dependencies=[Depends(check_api_key)])
@@ -63,6 +75,7 @@ def deregister_node(payload: dict = Body(...), db: Session = Depends(get_db)):
     if node:
         db.delete(node)
         db.commit()
+        NODES_REGISTERED.set(db.query(Node).count())
         return {"status": "deregistered", "node_id": node_id}
     return {"error": "Node not found"}
 
@@ -75,6 +88,7 @@ def submit_task(payload: dict = Body(...), db: Session = Depends(get_db)):
     task = Task(id=task_id, status='queued', node_id=None, payload=payload, submitted_at=payload['submitted_at'], assigned_at=None, completed_at=None, result=None)
     db.add(task)
     db.commit()
+    TASKS_SUBMITTED.inc()
     required = payload.get('required', {})
     best_node = None
     best_load = float('inf')
@@ -115,6 +129,7 @@ def report_result(payload: dict = Body(...), db: Session = Depends(get_db)):
         task.result = result
         task.completed_at = now
         db.commit()
+        TASKS_COMPLETED.inc()
     return {"status": "result_received", "task_id": task_id}
 
 @app.post("/tasks/reject", dependencies=[Depends(check_api_key)])
