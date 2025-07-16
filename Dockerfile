@@ -32,19 +32,19 @@ FROM python:3.12-slim
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends libssl-dev && rm -rf /var/lib/apt/lists/*
 
-# Copy and install the built wheel
-COPY --from=build /app/ReasoningAgent/target/wheels/*.whl /tmp/
-RUN pip install /tmp/*.whl fastapi uvicorn pydantic sqlalchemy slowapi
+WORKDIR /app
 
-# Copy FastAPI app
-COPY ./api /app/api
-WORKDIR /app/api
+# Copy built wheel from build stage
+COPY --from=build /app/ReasoningAgent/target/wheels/*.whl ./
+
+# Install FastAPI, Uvicorn, SQLAlchemy, slowapi, and the Rust extension
+RUN pip install *.whl fastapi uvicorn sqlalchemy pydantic slowapi
+
+# Copy API code
+COPY ./api ./api
 
 # Expose port
 EXPOSE 8000
 
-# Healthcheck for orchestration
-HEALTHCHECK CMD curl --fail http://localhost:8000/metrics || exit 1
-
-# Start FastAPI app
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Entrypoint
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]

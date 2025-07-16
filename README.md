@@ -1,12 +1,13 @@
 # ReasoningAgent: Rust + Python + FastAPI
 
 ## Features
-- Rust-based ReasoningAgent with OpenAI LLM plugin
-- Python FastAPI REST API: `/task`, `/query`, `/metrics`
+- Rust-based ReasoningAgent with OpenAI LLM plugin (retry, logging, config)
+- Python FastAPI REST API: `/task`, `/query`, `/metrics`, `/healthz`
+- SQLite persistence for all tasks/answers
+- API Key authentication for all endpoints
+- Per-API-key rate limiting (default: 60/minute, configurable)
 - Dockerized for reproducibility and orchestration
-- Ready for extension: persistence, metrics, multi-LLM, etc.
-- **API Key authentication for all endpoints**
-- **Per-API-key rate limiting (default: 60/minute)**
+- Ready for extension: OAuth2, async queue, Prometheus, etc.
 
 ## Quickstart (Docker)
 
@@ -22,56 +23,62 @@
 
 3. **API Endpoints:**
    - `POST /task` — Submit a prompt, get LLM answer
-   - `GET /metrics` — Health/metrics endpoint
    - `GET /query` — Query previous answers
+   - `GET /metrics` — Health/metrics endpoint
+   - `GET /healthz` — Health check
 
 ## Authentication
 
 All endpoints require an API key via the `X-API-Key` header.
-
-- Set valid keys in the `API_KEYS` environment variable (comma-separated).
-- Example: `API_KEYS=key1,key2,key3`
+- Set valid keys in the `API_KEYS` env var (comma-separated).
+- Example: `-e API_KEYS=key1,key2`
 - Example request:
   ```sh
   curl -X POST http://localhost:8000/task \
-    -H 'X-API-Key: key1' \
-    -H 'Content-Type: application/json' \
+    -H "X-API-Key: key1" \
+    -H "Content-Type: application/json" \
     -d '{"prompt": "Hello, world!"}'
   ```
 
 ## Rate Limiting
+- Per-API-key, default 60/minute (configurable via `RATE_LIMIT` env var)
+- Returns HTTP 429 if exceeded
+- Example: `-e RATE_LIMIT=100/hour`
 
-All endpoints are rate-limited per API key (default: 60 requests per minute).
-
-- Configure with the `RATE_LIMIT` environment variable (e.g., `RATE_LIMIT=100/hour`).
-- Exceeding the limit returns HTTP 429 with a clear error message and headers:
-  ```
-  HTTP/1.1 429 Too Many Requests
-  x-ratelimit-limit: 60
-  x-ratelimit-remaining: 0
-  x-ratelimit-reset: 60
-  ```
-- For distributed/multi-instance deployments, use Redis as a backend (see slowapi docs).
-
-## Local Development (Advanced)
-- Use `pyenv` to install Python 3.12
-- Use `maturin develop` to build the Rust extension
-- Run FastAPI with `uvicorn api.main:app --reload`
+## Persistence
+- All tasks and answers are stored in SQLite (`reasoning_agent.db` by default)
+- Change DB location with `DATABASE_URL` env var
 
 ## Orchestration
-- Healthcheck endpoint for Docker/Kubernetes
-- Ready for Docker Compose or K8s manifests
+- **Docker Compose:**
+  - Add Redis for distributed rate limiting if needed
+  - Example `docker-compose.yml`:
+    ```yaml
+    version: '3.8'
+    services:
+      agent:
+        build: .
+        ports:
+          - "8000:8000"
+        environment:
+          OPENAI_API_KEY: sk-...
+          API_KEYS: key1,key2
+          RATE_LIMIT: 60/minute
+    ```
+- **Kubernetes:**
+  - Use a `Deployment` and `Service` manifest
+  - Mount secrets for API keys and OpenAI key
+
+## CI/CD
+- GitHub Actions workflow in `.github/workflows/ci.yml` builds, tests, and checks Docker image
 
 ## Extending
-- Add persistence (SQLite, Postgres, etc.)
-- Add Prometheus metrics
-- Add more LLM providers or plugins
+- Add OAuth2, async queue, Prometheus, or swap DB as needed
+- See code comments for extension points
 
-## Environment Variables
-- `OPENAI_API_KEY` — Required for OpenAI LLM plugin
-- `API_KEYS` — Comma-separated list of valid API keys
-- `RATE_LIMIT` — Rate limit per API key (e.g., `60/minute`, `100/hour`)
-
----
-
-For more, see the code and comments in each file.
+## Best Practices
+- Never log or expose API keys
+- Use environment variables for all secrets/config
+- Use Docker for reproducibility
+- Use per-API-key rate limiting to control costs
+- Use CI/CD for all changes

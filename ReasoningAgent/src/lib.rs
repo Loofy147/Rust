@@ -28,69 +28,62 @@ fn setup_logger() {
     });
 }
 
-fn get_env_or_default<T: std::str::FromStr>(key: &str, default: T) -> T {
-    env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+fn get_env_or_default(key: &str, default: &str) -> String {
+    env::var(key).unwrap_or_else(|_| default.to_string())
 }
 
 #[pyfunction]
-fn call_openai(prompt: String, model: Option<String>, max_tokens: Option<u32>, temperature: Option<f32>) -> PyResult<String> {
+pub fn call_openai(prompt: String, model: Option<String>, max_tokens: Option<u32>, temperature: Option<f32>) -> PyResult<String> {
     setup_logger();
     let api_key = env::var("OPENAI_API_KEY").map_err(|_| pyo3::exceptions::PyValueError::new_err("OPENAI_API_KEY not set"))?;
-    let model = model.or_else(|| env::var("OPENAI_MODEL").ok()).unwrap_or_else(|| "text-davinci-003".to_string());
-    let max_tokens = max_tokens.or_else(|| env::var("OPENAI_MAX_TOKENS").ok().and_then(|v| v.parse().ok())).unwrap_or(256);
-    let temperature = temperature.or_else(|| env::var("OPENAI_TEMPERATURE").ok().and_then(|v| v.parse().ok())).unwrap_or(0.7);
+    let model = model.unwrap_or_else(|| get_env_or_default("OPENAI_MODEL", "text-davinci-003"));
+    let max_tokens = max_tokens.unwrap_or_else(|| get_env_or_default("OPENAI_MAX_TOKENS", "256").parse().unwrap_or(256));
+    let temperature = temperature.unwrap_or_else(|| get_env_or_default("OPENAI_TEMPERATURE", "0.7").parse().unwrap_or(0.7));
+    let req = OpenAIRequest { model: model.clone(), prompt: prompt.clone(), max_tokens, temperature };
     let client = reqwest::blocking::Client::new();
-    let req_body = OpenAIRequest {
-        model: model.clone(),
-        prompt: prompt.clone(),
-        max_tokens,
-        temperature,
-    };
-    let max_retries = get_env_or_default("OPENAI_MAX_RETRIES", 3);
-    let mut attempt = 0;
-    let mut last_err = None;
-    while attempt < max_retries {
-        attempt += 1;
-        info!("[OpenAI] Attempt {}: model={}, max_tokens={}, temperature={}", attempt, model, max_tokens, temperature);
-        match client
-            .post("https://api.openai.com/v1/completions")
+    let url = "https://api.openai.com/v1/completions";
+    let mut retries = get_env_or_default("OPENAI_RETRIES", "3").parse().unwrap_or(3);
+    let mut backoff = 1;
+    loop {
+        info!("Calling OpenAI: model={}, max_tokens={}, temp={}, prompt_len={}", model, max_tokens, temperature, prompt.len());
+        let resp = client.post(url)
             .bearer_auth(&api_key)
-            .json(&req_body)
-            .send()
-        {
-            Ok(resp) => {
-                let status = resp.status();
-                if !status.is_success() {
-                    warn!("[OpenAI] Non-success status: {}", status);
-                    last_err = Some(format!("OpenAI API error: status {}", status));
-                    if status.is_server_error() || status.as_u16() == 429 {
-                        thread::sleep(Duration::from_millis(500 * attempt));
-                        continue;
+            .json(&req)
+            .send();
+        match resp {
+            Ok(r) => {
+                if r.status().is_success() {
+                    let json: OpenAIResponse = r.json().map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("OpenAI JSON error: {}", e)))?;
+                    if let Some(choice) = json.choices.get(0) {
+                        info!("OpenAI call succeeded");
+                        return Ok(choice.text.clone());
                     } else {
-                        break;
+                        error!("OpenAI response missing choices");
+                        return Err(pyo3::exceptions::PyValueError::new_err("No choices in OpenAI response"));
                     }
-                }
-                match resp.json::<OpenAIResponse>() {
-                    Ok(resp_json) => {
-                        let answer = resp_json.choices.get(0).map(|c| c.text.clone()).unwrap_or_default();
-                        info!("[OpenAI] Success: {} chars", answer.len());
-                        return Ok(answer);
+                } else {
+                    warn!("OpenAI HTTP error: {}", r.status());
+                    if retries > 0 && r.status().is_server_error() {
+                        retries -= 1;
+                        thread::sleep(Duration::from_secs(backoff));
+                        backoff *= 2;
+                        continue;
                     }
-                    Err(e) => {
-                        error!("[OpenAI] Response parse error: {}", e);
-                        last_err = Some(format!("Response parse error: {}", e));
-                        break;
-                    }
+                    return Err(pyo3::exceptions::PyValueError::new_err(format!("OpenAI HTTP error: {}", r.status())));
                 }
             }
             Err(e) => {
-                warn!("[OpenAI] Request error: {}", e);
-                last_err = Some(format!("Request error: {}", e));
-                thread::sleep(Duration::from_millis(500 * attempt));
+                error!("OpenAI network error: {}", e);
+                if retries > 0 {
+                    retries -= 1;
+                    thread::sleep(Duration::from_secs(backoff));
+                    backoff *= 2;
+                    continue;
+                }
+                return Err(pyo3::exceptions::PyValueError::new_err(format!("OpenAI network error: {}", e)));
             }
         }
     }
-    Err(pyo3::exceptions::PyRuntimeError::new_err(last_err.unwrap_or_else(|| "Unknown error".to_string())))
 }
 
 #[pymodule]
