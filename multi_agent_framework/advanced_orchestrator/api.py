@@ -5,6 +5,8 @@ import asyncio
 import os
 from advanced_orchestrator.orchestrator import orchestrator
 import traceback
+from advanced_orchestrator.monitoring import api_request_counter, api_error_counter, tracer
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
 app = FastAPI()
 
@@ -36,11 +38,26 @@ async def global_exception_handler(request: Request, exc: Exception):
         },
     )
 
+@app.get("/metrics")
+def metrics():
+    return JSONResponse(content=generate_latest().decode('utf-8'), media_type=CONTENT_TYPE_LATEST)
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+# Instrumented endpoints
 @app.post("/register_agent")
 async def register_agent(request: Request):
-    data = await request.json()
-    REGISTRY.register(data['agent_id'], data['info'])
-    return JSONResponse({"status": "registered"})
+    with tracer.start_as_current_span("register_agent"):
+        api_request_counter.labels(endpoint="/register_agent", method="POST").inc()
+        try:
+            data = await request.json()
+            REGISTRY.register(data['agent_id'], data['info'])
+            return JSONResponse({"status": "registered"})
+        except Exception as e:
+            api_error_counter.labels(endpoint="/register_agent", method="POST").inc()
+            raise e
 
 @app.post("/unregister_agent")
 async def unregister_agent(request: Request):

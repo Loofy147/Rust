@@ -3,6 +3,7 @@ import queue
 import logging
 import time
 import traceback
+from advanced_orchestrator.monitoring import agent_task_counter, agent_error_counter, tracer
 
 class Agent(threading.Thread):
     def __init__(self, name, inbox, outboxes, config):
@@ -44,7 +45,24 @@ class Agent(threading.Thread):
                 time.sleep(0.1)
 
     def process(self, msg):
-        raise NotImplementedError
+        with tracer.start_as_current_span(f"agent_{self.name}_process"):
+            agent_task_counter.labels(agent_id=self.name).inc()
+            start = time.time()
+            try:
+                result = self._process(msg)
+                return result
+            except Exception as e:
+                agent_error_counter.labels(agent_id=self.name).inc()
+                self.log_error(e, msg)
+                return {
+                    "status": "error",
+                    "error_type": type(e).__name__,
+                    "message": str(e),
+                    "trace": traceback.format_exc()
+                }
+            finally:
+                duration = time.time() - start
+                # Optionally, add a duration metric here
 
     def stop(self):
         self.running = False
