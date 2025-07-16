@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import os
 import importlib
 from jose import JWTError, jwt
@@ -78,7 +78,17 @@ class AuditLog(Base):
     details = Column(String, nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow)
 
+class Usage(Base):
+    __tablename__ = "usage"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=True)
+    api_key_hash = Column(String, nullable=True)
+    day = Column(String, nullable=False)  # YYYY-MM-DD
+    count = Column(Integer, default=0)
+
 Base.metadata.create_all(bind=engine)
+
+DEFAULT_DAILY_QUOTA = int(os.environ.get("DAILY_QUOTA", 100))
 
 app = FastAPI(title="ReasoningAgent API")
 
@@ -268,6 +278,10 @@ class AuditLogResponse(BaseModel):
     details: str | None
     timestamp: datetime
 
+class UsageReport(BaseModel):
+    day: str
+    count: int
+
 # --- OAuth2 /token endpoint ---
 @app.post("/token", response_model=Token)
 def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
@@ -303,10 +317,12 @@ async def submit_task(
     # Enqueue async LLM task
     LLM_CALLS.labels(req.model).inc()
     x_api_key = auth if isinstance(auth, str) else None
+    check_quota(auth, x_api_key)
     task = celery.send_task(
         "api.worker.llm_task",
         args=[req.prompt, req.model, req.max_tokens, req.temperature, x_api_key, req.provider],
     )
+    increment_usage(auth, x_api_key)
     return TaskResponse(task_id=task.id)
 
 @app.get("/result/{task_id}", response_model=ResultResponse)
@@ -507,6 +523,7 @@ def healthz():
 # - LLM plugin system: OpenAI, Hugging Face, extensible
 # - Ready for extension: user registration, roles, external IdP, etc.
 # - All admin/sensitive actions are logged to the audit log.
+# - Usage tracking and quota enforcement for API keys and users.
 
 from kg.sqlite_kg import SQLiteKG
 import json
@@ -571,3 +588,45 @@ def get_audit_log(admin: User = Depends(require_admin_user)):
             timestamp=l.timestamp
         ) for l in logs
     ]
+
+@app.get("/usage", response_model=list[UsageReport])
+def get_my_usage(auth=Depends(get_auth_user)):
+    db = SessionLocal()
+    user_id = getattr(auth, "id", None) if hasattr(auth, "id") else None
+    api_key = auth if isinstance(auth, str) else None
+    api_key_hash = sha256(api_key.encode()).hexdigest() if api_key else None
+    q = db.query(Usage).filter(
+        (Usage.user_id == user_id) | (Usage.api_key_hash == api_key_hash)
+    ).order_by(Usage.day.desc()).limit(30)
+    return [UsageReport(day=u.day, count=u.count) for u in q]
+
+@app.get("/usage/all", response_model=list[UsageReport])
+def get_all_usage(admin: User = Depends(require_admin_user)):
+    db = SessionLocal()
+    q = db.query(Usage.day, Usage.count).order_by(Usage.day.desc()).all()
+    return [UsageReport(day=day, count=count) for day, count in q]
+
+def increment_usage(user: User = None, api_key: str = None):
+    db = SessionLocal()
+    today = date.today().isoformat()
+    user_id = getattr(user, "id", None) if user else None
+    api_key_hash = sha256(api_key.encode()).hexdigest() if api_key else None
+    usage = db.query(Usage).filter_by(user_id=user_id, api_key_hash=api_key_hash, day=today).first()
+    if not usage:
+        usage = Usage(user_id=user_id, api_key_hash=api_key_hash, day=today, count=1)
+        db.add(usage)
+    else:
+        usage.count += 1
+    db.commit()
+    db.close()
+
+def check_quota(user: User = None, api_key: str = None):
+    db = SessionLocal()
+    today = date.today().isoformat()
+    user_id = getattr(user, "id", None) if user else None
+    api_key_hash = sha256(api_key.encode()).hexdigest() if api_key else None
+    usage = db.query(Usage).filter_by(user_id=user_id, api_key_hash=api_key_hash, day=today).first()
+    count = usage.count if usage else 0
+    db.close()
+    if count >= DEFAULT_DAILY_QUOTA:
+        raise HTTPException(status_code=429, detail="Daily quota exceeded")
