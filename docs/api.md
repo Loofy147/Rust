@@ -24,6 +24,14 @@ Submit a new task for processing.
 **Headers:**
 - `x-api-key`: Your API key
 
+**Example:**
+```bash
+curl -X POST "http://localhost:8000/tasks" \
+  -H "x-api-key: your-secret-key" \
+  -H "Content-Type: application/json" \
+  -d '{"input": "your task input"}'
+```
+
 ---
 
 ### `GET /tasks/{task_id}`
@@ -41,10 +49,21 @@ Get the status and result of a task.
 **Headers:**
 - `x-api-key`: Your API key
 
+**Example:**
+```bash
+curl -X GET "http://localhost:8000/tasks/{task_id}" \
+  -H "x-api-key: your-secret-key"
+```
+
 ---
 
 ### `GET /metrics`
 Prometheus metrics endpoint for monitoring.
+
+**Example:**
+```bash
+curl http://localhost:8000/metrics
+```
 
 ---
 
@@ -61,6 +80,21 @@ Subscribe to live updates for a task.
 }
 ```
 
+**Example (Python):**
+```python
+import websockets
+import asyncio
+
+async def listen(task_id):
+    uri = f"ws://localhost:8000/ws/tasks/{task_id}"
+    async with websockets.connect(uri) as websocket:
+        while True:
+            msg = await websocket.recv()
+            print(msg)
+
+asyncio.run(listen("your-task-id"))
+```
+
 ---
 
 ## Authentication
@@ -70,3 +104,10 @@ All endpoints require an API key via the `x-api-key` header.
 
 ## OpenAPI/Swagger
 Interactive API docs are available at `/docs` when running the API.
+
+**To view the full OpenAPI schema:**
+- Visit [http://localhost:8000/openapi.json](http://localhost:8000/openapi.json)
+- Or use:
+  ```bash
+  curl http://localhost:8000/openapi.json
+  ```

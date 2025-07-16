@@ -27,9 +27,28 @@ class MyLLM(LLMPlugin):
         return "My LLM response"
 ```
 
+### Example: Custom KG Plugin
+```python
+from agent.interfaces import KGPlugin
+
+class MyKG(KGPlugin):
+    def query(self, query: str) -> dict:
+        # Your KG logic here
+        return {"result": "..."}
+    def store(self, data: dict) -> None:
+        # Store logic
+        pass
+```
+
 ## Using Your Plugin
 - Set the appropriate environment variable (e.g., `LLM_PLUGIN=myllm`).
 - Restart the API (or use hot reload in dev mode).
+
+## Best Practices
+- Keep plugins stateless if possible
+- Use environment variables for configuration
+- Add tests for your plugin in `tests/`
+- Document your plugin’s usage and config
 
 ## Built-in Plugins
 - `OpenAILLM` (OpenAI API)

@@ -28,6 +28,18 @@ python manage.py reload-plugins # Enable hot plugin reload (restart API after)
 - Set `MOCK_PLUGINS=1` to use mock plugins
 - Use `python manage.py seed` to populate the KG/vector store
 
+## Debugging & Troubleshooting
+- Use structured logs (Loguru, JSON) for easy debugging
+- Check `/metrics` for Prometheus stats
+- Use `/docs` for interactive API testing
+- For plugin issues, use hot reload and check logs for import errors
+
+## Advanced Workflows
+- Use VSCode dev container for instant setup
+- Use `pytest --cov` for coverage
+- Use `mypy` and `pyright` for type safety
+- Add new plugins and test with mock/sample data
+
 ## Testing & Coverage
 - Run all tests: `pytest`
 - Check type safety: `mypy .`
