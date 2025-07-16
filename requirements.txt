@@ -16,3 +16,4 @@ psycopg2-binary
 streamlit
 prometheus_client
 pyjwt
+redis
