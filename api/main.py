@@ -1,5 +1,9 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from pydantic import BaseModel
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, Session
+from datetime import datetime
 import os
 import importlib
 
@@ -9,7 +13,31 @@ try:
 except ImportError:
     reasoning_agent = None
 
+DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./reasoning_agent.db")
+engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+class TaskRecord(Base):
+    __tablename__ = "tasks"
+    id = Column(Integer, primary_key=True, index=True)
+    prompt = Column(Text, nullable=False)
+    model = Column(String, default="text-davinci-003")
+    max_tokens = Column(Integer, default=256)
+    temperature = Column(Float, default=0.7)
+    answer = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+Base.metadata.create_all(bind=engine)
+
 app = FastAPI(title="ReasoningAgent API")
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 class TaskRequest(BaseModel):
     prompt: str
@@ -20,24 +48,48 @@ class TaskRequest(BaseModel):
 class TaskResponse(BaseModel):
     answer: str
 
+class QueryResponse(BaseModel):
+    id: int
+    prompt: str
+    answer: str
+    created_at: datetime
+
 @app.post("/task", response_model=TaskResponse)
-def submit_task(req: TaskRequest):
+def submit_task(req: TaskRequest, db: Session = Depends(get_db)):
     if not reasoning_agent:
         raise HTTPException(status_code=500, detail="Rust extension not loaded")
     try:
         answer = reasoning_agent.call_openai(
             req.prompt, req.model, req.max_tokens, req.temperature
         )
+        # Store in DB
+        record = TaskRecord(
+            prompt=req.prompt,
+            model=req.model,
+            max_tokens=req.max_tokens,
+            temperature=req.temperature,
+            answer=answer,
+        )
+        db.add(record)
+        db.commit()
+        db.refresh(record)
         return TaskResponse(answer=answer)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/metrics")
-def metrics():
-    # Placeholder for Prometheus or custom metrics
-    return {"status": "ok", "tasks_processed": 0}
+def metrics(db: Session = Depends(get_db)):
+    count = db.query(TaskRecord).count()
+    return {"status": "ok", "tasks_processed": count}
 
-@app.get("/query")
-def query():
-    # Placeholder for querying previous answers (to be implemented with persistence)
-    return {"message": "Query endpoint not yet implemented."}
+@app.get("/query", response_model=list[QueryResponse])
+def query(prompt: str = None, db: Session = Depends(get_db)):
+    q = db.query(TaskRecord)
+    if prompt:
+        q = q.filter(TaskRecord.prompt.contains(prompt))
+    results = q.order_by(TaskRecord.created_at.desc()).limit(20).all()
+    return [
+        QueryResponse(
+            id=r.id, prompt=r.prompt, answer=r.answer, created_at=r.created_at
+        ) for r in results
+    ]
