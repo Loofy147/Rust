@@ -228,6 +228,6 @@ MIT License. See `LICENSE` file.
 
 ## Contact & Support
 
-- [Your Name/Org]
-- [Contact Email]
+- [Loofy147/Org]
+- [ebh.ceo213@gmail.com]
 - [Issue Tracker/GitHub]
