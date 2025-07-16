@@ -1,0 +1,7 @@
+networkx
+spacy
+faiss-cpu
+sentence-transformers
+requests
+fastapi
+uvicorn
