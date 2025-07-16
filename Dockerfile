@@ -34,7 +34,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends libssl-dev && r
 
 # Copy and install the built wheel
 COPY --from=build /app/ReasoningAgent/target/wheels/*.whl /tmp/
-RUN pip install /tmp/*.whl fastapi uvicorn pydantic
+RUN pip install /tmp/*.whl fastapi uvicorn pydantic sqlalchemy slowapi
 
 # Copy FastAPI app
 COPY ./api /app/api

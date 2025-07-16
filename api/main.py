@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, Header
+from fastapi import FastAPI, HTTPException, Depends, Header, Request
 from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text
 from sqlalchemy.ext.declarative import declarative_base
@@ -6,6 +6,11 @@ from sqlalchemy.orm import sessionmaker, Session
 from datetime import datetime
 import os
 import importlib
+
+# --- Rate limiting ---
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 # Import the Rust extension (built by maturin)
 try:
@@ -30,7 +35,12 @@ class TaskRecord(Base):
 
 Base.metadata.create_all(bind=engine)
 
+# --- Rate Limiter Setup ---
+rate_limit = os.environ.get("RATE_LIMIT", "60/minute")
+limiter = Limiter(key_func=lambda request: request.headers.get("x-api-key", "nokey"))
 app = FastAPI(title="ReasoningAgent API")
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 def get_db():
     db = SessionLocal()
@@ -68,8 +78,10 @@ class QueryResponse(BaseModel):
     created_at: datetime
 
 @app.post("/task", response_model=TaskResponse)
+@limiter.limit(rate_limit)
 def submit_task(
     req: TaskRequest,
+    request: Request,
     db: Session = Depends(get_db),
     api_key: str = Depends(api_key_auth)
 ):
@@ -95,7 +107,9 @@ def submit_task(
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/metrics")
+@limiter.limit(rate_limit)
 def metrics(
+    request: Request,
     db: Session = Depends(get_db),
     api_key: str = Depends(api_key_auth)
 ):
@@ -103,7 +117,9 @@ def metrics(
     return {"status": "ok", "tasks_processed": count}
 
 @app.get("/query", response_model=list[QueryResponse])
+@limiter.limit(rate_limit)
 def query(
+    request: Request,
     prompt: str = None,
     db: Session = Depends(get_db),
     api_key: str = Depends(api_key_auth)
