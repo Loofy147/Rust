@@ -1,44 +1,52 @@
-# Super Advanced Agent Framework
+# Orchestrator-AI Enterprise Platform
 
-This project is a modular, extensible framework for building, orchestrating, and collaborating with advanced AI agents powered by vector search, LLMs, multi-modal memory, and more.
+## Project Structure
 
-## Features
-- FAISS-based vector store with advanced retrieval
-- Multiple agent types: Retriever, Summarizer, Conversational, Plugin, Personalization, Provenance, Expiry, Hybrid, Multi-modal
-- LLM-based generation, re-ranking, and critique
-- Context windowing, memory chunking, expiry, prioritization
-- Plugin/tool integration
-- Distributed and async support
-- Orchestration: routing, chaining, fallback, supervision, collaboration, voting, consensus
+```
+orchestrator_ai/
+├── app/
+│   ├── __init__.py
+│   ├── main.py
+│   ├── api/
+│   ├── agents/
+│   ├── orchestrator/
+│   ├── db/
+│   ├── models/
+│   ├── schemas/
+│   ├── services/
+│   ├── utils/
+│   └── config.py
+├── tests/
+├── Dockerfile
+├── requirements.txt
+├── README.md
+└── .env
+```
+
+## Environment Setup
+
+1. **Install Docker and Docker Compose** (or use local Python and PostgreSQL)
+2. **Clone the repo and cd into it**
+3. **Create and configure your `.env` file** (see example)
+4. **Build and run the app:**
+   ```bash
+   docker build -t orchestrator-ai .
+   docker run --env-file .env -p 8000:8000 orchestrator-ai
+   ```
+   Or, for local dev:
+   ```bash
+   pip install -r requirements.txt
+   uvicorn app.main:app --reload
+   ```
+5. **Run Alembic migrations:**
+   ```bash
+   alembic upgrade head
+   ```
 
 ## Quick Start
-1. **Install dependencies:**
-   ```bash
-   pip install faiss-cpu torch transformers sentence-transformers pillow
-   # For multi-modal: pip install git+https://github.com/openai/CLIP.git
-   ```
-2. **Run a demo:**
-   ```bash
-   python super_advanced_agents.py
-   python orchestrator_demo.py
-   python collaboration_orchestrator.py
-   ```
+- The API will be available at `http://localhost:8000` (see `/docs` for OpenAPI)
+- Configure your database and Redis as needed
 
-## Documentation
-- [Agents](docs/AGENTS.md)
-- [Vector Store](docs/VECTOR_STORE.md)
-- [Orchestration](docs/ORCHESTRATION.md)
-- [Collaboration & Voting](docs/COLLABORATION.md)
-- [Async & Distributed](docs/ASYNC_DISTRIBUTED.md)
-- [Extending the Framework](docs/EXTENDING.md)
-
-## Directory Structure
-- `super_advanced_agents.py` — All advanced agent types and features
-- `orchestrator_demo.py` — Orchestration patterns and demo
-- `collaboration_orchestrator.py` — Agent collaboration, voting, and consensus
-- `faiss_vector_store.py` — Vector store implementation
-- `llm_agent.py`, `async_llm_agent.py`, `advanced_agents.py` — Specialized agent demos
-- `docs/` — Detailed documentation for each component
-
-## License
-MIT
+## Next Steps
+- Implement and configure agents, orchestrator, and API endpoints
+- See `docs/` for detailed documentation

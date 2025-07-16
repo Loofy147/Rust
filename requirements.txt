@@ -1,0 +1,16 @@
+fastapi
+uvicorn
+sqlalchemy
+alembic
+psycopg2-binary
+pydantic
+passlib[bcrypt]
+python-jose
+faiss-cpu
+transformers
+sentence-transformers
+celery
+redis
+pillow
+pytest
+python-dotenv
