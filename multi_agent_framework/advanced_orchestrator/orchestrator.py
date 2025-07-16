@@ -10,6 +10,8 @@ import uvicorn
 import time
 import yaml
 import os
+from agents.advanced.llm_reasoning import LLMReasoningAgent
+from agents.advanced.retriever import RetrieverAgent
 
 class AdvancedOrchestrator:
     def __init__(self):
@@ -32,6 +34,8 @@ class AdvancedOrchestrator:
         self.human_in_the_loop_queue = []  # For HITL steps
         self.edge_agents = {}  # For edge/federated agent support
         self.emergent_behavior_log = []  # For emergent behavior analysis
+        self.llm_agent = LLMReasoningAgent('llm_reasoning1', self.registry)
+        self.retriever_agent = RetrieverAgent('retriever1', self.registry)
 
     def start_api(self):
         threading.Thread(target=lambda: uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info"), daemon=True).start()
@@ -64,6 +68,37 @@ class AdvancedOrchestrator:
                 )
                 print("[SelfOptimizationRLAgent Suggestions]", result_rl)
             time.sleep(5)
+
+    def automated_reasoning_pipeline(self, workflow_id, question, feedback=None):
+        # Step 1: Retrieve context
+        retrieval = self.retriever_agent.process({'query': question})
+        context = retrieval['context']
+        # Step 2: LLM reasoning
+        llm_result = self.llm_agent.process({'question': question, 'context': context, 'feedback': feedback})
+        self.workflow_engine.record_step_output(workflow_id, 'retrieval', retrieval)
+        self.workflow_engine.record_step_output(workflow_id, 'llm_reasoning', llm_result)
+        # Step 3: Feedback/clarification loop
+        if llm_result['needs_clarification']:
+            print(f"[LLM] Needs clarification: {llm_result['needs_clarification']}")
+            # Escalate to HITL for clarification
+            self.human_in_the_loop_queue.append({
+                'workflow_id': workflow_id,
+                'step': 'llm_reasoning',
+                'question': llm_result['needs_clarification'],
+                'context': context
+            })
+            self.workflow_engine.log_feedback(workflow_id, 'llm_reasoning', {'type': 'clarification', 'message': llm_result['needs_clarification']})
+            return None
+        # Step 4: HITL QA before production
+        self.human_in_the_loop_queue.append({
+            'workflow_id': workflow_id,
+            'step': 'qa',
+            'llm_output': llm_result,
+            'context': context
+        })
+        self.workflow_engine.log_feedback(workflow_id, 'llm_reasoning', {'type': 'output', 'message': llm_result})
+        print(f"[Orchestrator] Output ready for HITL QA: {llm_result['answer']}")
+        return llm_result
 
     def run(self):
         self.start_api()
