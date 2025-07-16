@@ -10,6 +10,8 @@ import importlib
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from llm_plugins import get_plugin, list_plugins
+from vector_store.chroma_store import ChromaVectorStore
+import uuid
 
 # --- Rate limiting ---
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -198,6 +200,14 @@ class ModelInfo(BaseModel):
     provider: str
     models: list[str]
 
+class VectorUpsertRequest(BaseModel):
+    text: str
+    metadata: dict = {}
+
+class VectorQueryRequest(BaseModel):
+    text: str
+    top_k: int = 5
+
 # --- OAuth2 /token endpoint ---
 @app.post("/token", response_model=Token)
 def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
@@ -286,6 +296,17 @@ async def query_tasks(
             api_key=r.api_key
         ) for r in results
     ]
+
+@app.post("/vectors/upsert")
+def upsert_vector(req: VectorUpsertRequest, auth=Depends(get_auth_user)):
+    vec_id = str(uuid.uuid4())
+    vector_store.upsert(vec_id, req.text, req.metadata)
+    return {"id": vec_id}
+
+@app.post("/vectors/query")
+def query_vector(req: VectorQueryRequest, auth=Depends(get_auth_user)):
+    results = vector_store.query(req.text, req.top_k)
+    return results
 
 @app.get("/metrics")
 @limiter.limit(get_rate_limit())
