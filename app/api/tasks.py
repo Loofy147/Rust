@@ -59,17 +59,20 @@ def submit_task(task: TaskCreate, db: Session = Depends(get_db)):
     db.refresh(db_task)
     # Find agent in orchestrator registry
     agent = None
-    for a in orchestrator_ai.agent_registry.values():
-        if str(getattr(a, 'id', '')) == task.agent_id:
+    for name, a in orchestrator_ai.agent_registry.items():
+        if str(getattr(a, 'id', '')) == task.agent_id or name == task.type or name == task.agent_id:
             agent = a
             break
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found in orchestrator")
-    # Submit to orchestrator for real execution (stub: call agent if callable)
+    # Submit to orchestrator for real execution
     def agent_task():
         try:
-            # If agent is a callable (advanced agent), call it with input
-            if callable(agent):
+            # Call the correct method on the agent based on task type
+            if hasattr(agent, task.type):
+                method = getattr(agent, task.type)
+                result = method(**task.input)
+            elif callable(agent):
                 result = agent(**task.input)
             else:
                 result = {"result": "executed by agent stub"}
