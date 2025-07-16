@@ -12,6 +12,7 @@ from abc import ABC, abstractmethod
 import json
 import hashlib
 import time
+import pickle
 
 # Configure advanced logging for attention mechanism monitoring
 logging.basicConfig(level=logging.INFO)
@@ -438,6 +439,31 @@ class MultiHeadAttentionDataAgent:
         
         return config
 
+    def save_state(self, filepath: str):
+        """Save all weights and metadata to a file for persistence."""
+        state = {
+            "weights": {k: v.cpu() for k, v in self.attention_weights.items()},
+            "metadata": {k: pickle.dumps(v) for k, v in self.consistency_manager.tensor_registry.items()},
+            "performance_metrics": self.performance_metrics,
+            "config": self.export_configuration(),
+        }
+        torch.save(state, filepath)
+        logger.info(f"Agent state saved to {filepath}")
+
+    def load_state(self, filepath: str):
+        """Load all weights and metadata from a file."""
+        state = torch.load(filepath, map_location="cpu")
+        # Restore weights
+        for k, v in state["weights"].items():
+            self.attention_weights[k] = v
+        # Restore metadata
+        self.consistency_manager.tensor_registry.clear()
+        for k, v_bytes in state["metadata"].items():
+            self.consistency_manager.tensor_registry[k] = pickle.loads(v_bytes)
+        # Restore performance metrics
+        self.performance_metrics = state.get("performance_metrics", self.performance_metrics)
+        logger.info(f"Agent state loaded from {filepath}")
+
 # Example usage and demonstration
 if __name__ == "__main__":
     # Initialize the attention data agent
@@ -474,3 +500,8 @@ if __name__ == "__main__":
     # Export and display configuration
     config = agent.export_configuration()
     print("Agent Configuration:", json.dumps(config, indent=2))
+    
+    # Save and load demonstration
+    agent.save_state("agent_state.pth")
+    agent.load_state("agent_state.pth")
+    print("State save/load roundtrip successful.")
