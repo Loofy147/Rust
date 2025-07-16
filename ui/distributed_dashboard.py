@@ -4,9 +4,8 @@ import time
 
 API_URL = "http://localhost:8000"  # Adjust as needed
 
-st.title("Distributed Agent System Dashboard")
+st.title("Distributed Agent System Dashboard (DB-backed)")
 
-# --- Nodes ---
 st.header("Nodes/Agents")
 if st.button("Refresh Nodes"):
     nodes = requests.get(f"{API_URL}/agents/nodes").json()
@@ -18,44 +17,30 @@ if st.button("Refresh Nodes"):
         st.write(f"  Load: {info.get('load', 0)}")
         st.write(f"  Last seen: {info.get('last_seen_delta', 0):.1f}s ago")
 
-# --- Plugins ---
-st.header("Plugins")
-if st.button("List Plugins"):
-    plugins = requests.get(f"{API_URL}/plugins").json()
-    st.write(plugins)
-
-with st.form("Load Plugin"):
-    module = st.text_input("Module", "plugins.normalizer_plugin")
-    cls = st.text_input("Class", "NormalizerPlugin")
-    submitted = st.form_submit_button("Load Plugin")
-    if submitted:
-        r = requests.post(f"{API_URL}/plugins/load", json={"module": module, "class": cls})
-        st.write(r.json())
-
-with st.form("Unload Plugin"):
-    cls = st.text_input("Class to Unload", "NormalizerPlugin")
-    submitted = st.form_submit_button("Unload Plugin")
-    if submitted:
-        r = requests.post(f"{API_URL}/plugins/unload", json={"class": cls})
-        st.write(r.json())
-
-# --- Tasks ---
-st.header("Tasks")
-if st.button("Show All Results"):
-    results = requests.get(f"{API_URL}/tasks/results").json()
-    st.write(results)
-
-# --- Queued Tasks ---
 st.header("Queued Tasks")
 if st.button("Show Queued Tasks"):
     queued = requests.get(f"{API_URL}/tasks/queued").json()
     st.write(queued)
 
-with st.form("Assign Task"):
-    node_id = st.text_input("Node ID", "node-1")
+st.header("In Progress Tasks")
+if st.button("Show In Progress"):
+    in_progress = requests.get(f"{API_URL}/tasks/in_progress").json()
+    st.write(in_progress)
+
+st.header("Results")
+if st.button("Show All Results"):
+    results = requests.get(f"{API_URL}/tasks/results").json()
+    st.write(results)
+
+with st.form("Submit Task"):
     text = st.text_input("Task Text", "Hello distributed world!")
-    submitted = st.form_submit_button("Assign Task")
+    required = st.text_area("Required Capabilities (JSON)", "{}")
+    submitted = st.form_submit_button("Submit Task")
     if submitted:
-        task = {"id": int(time.time()), "text": text}
-        r = requests.post(f"{API_URL}/tasks/assign", json={"node_id": node_id, "task": task})
+        try:
+            req = eval(required)
+        except Exception:
+            req = {}
+        payload = {"text": text, "required": req}
+        r = requests.post(f"{API_URL}/tasks/submit", json=payload)
         st.write(r.json())

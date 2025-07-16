@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, Header, Body, Request
+from fastapi import FastAPI, Depends, Body
 import yaml
 from db.models import Node, Task
 from db.session import get_db
@@ -11,7 +11,6 @@ app = FastAPI()
 with open('config.yaml') as f:
     config = yaml.safe_load(f)
 
-# --- Node Endpoints ---
 @app.post("/agents/register")
 def register_node(payload: dict = Body(...), db: Session = Depends(get_db)):
     node_id = payload.get('node_id')
@@ -56,7 +55,6 @@ def deregister_node(payload: dict = Body(...), db: Session = Depends(get_db)):
         return {"status": "deregistered", "node_id": node_id}
     return {"error": "Node not found"}
 
-# --- Task Endpoints ---
 @app.post("/tasks/submit")
 def submit_task(payload: dict = Body(...), db: Session = Depends(get_db)):
     task_id = payload.get('id') or str(uuid.uuid4())
@@ -66,7 +64,6 @@ def submit_task(payload: dict = Body(...), db: Session = Depends(get_db)):
     task = Task(id=task_id, status='queued', node_id=None, payload=payload, submitted_at=payload['submitted_at'], assigned_at=None, completed_at=None, result=None)
     db.add(task)
     db.commit()
-    # Smart assignment
     required = payload.get('required', {})
     best_node = None
     best_load = float('inf')
@@ -127,7 +124,6 @@ def get_queued_tasks(db: Session = Depends(get_db)):
     queued = []
     for t in db.query(Task).filter_by(status='queued'):
         queued.append(t.payload)
-    # Reassign timed-out tasks
     for t in db.query(Task).filter_by(status='assigned'):
         if now - (t.assigned_at or 0) > timeout:
             t.status = 'queued'
