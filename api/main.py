@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, Depends, WebSocket, WebSocketDisconnect
 from api.schemas import TaskRequest, TaskResult
-from api.auth import verify_api_key
+from api.auth import get_current_user, authenticate_user, create_access_token
 from uuid import uuid4
 import os
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -31,16 +31,26 @@ ws_connections = {}
 
 llm, kg, vector_store, metrics, prompt_builder = load_plugins()
 
-@app.post("/tasks", response_model=TaskResult, dependencies=[Depends(verify_api_key)])
-async def submit_task(task: TaskRequest):
+# OAuth2 token endpoint
+from fastapi.security import OAuth2PasswordRequestForm
+@app.post("/token")
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
+    user = authenticate_user(form_data.username, form_data.password)
+    if not user:
+        raise HTTPException(status_code=401, detail="Incorrect username or password")
+    access_token = create_access_token(data={"sub": user["username"]})
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@app.post("/tasks", response_model=TaskResult)
+async def submit_task(task: TaskRequest, user=Depends(get_current_user)):
     task_id = str(uuid4())
     tasks[task_id] = {"status": "pending", "result": None, "celery_id": None}
     celery_result = process_task_celery.apply_async(args=[task_id, task.input])
     tasks[task_id]["celery_id"] = celery_result.id
     return TaskResult(id=task_id, status=tasks[task_id]["status"], result=tasks[task_id]["result"])
 
-@app.get("/tasks/{task_id}", response_model=TaskResult, dependencies=[Depends(verify_api_key)])
-async def get_task(task_id: str):
+@app.get("/tasks/{task_id}", response_model=TaskResult)
+async def get_task(task_id: str, user=Depends(get_current_user)):
     if task_id not in tasks:
         raise HTTPException(status_code=404, detail="Task not found")
     celery_id = tasks[task_id]["celery_id"]

@@ -16,3 +16,5 @@ opentelemetry-instrumentation
 opentelemetry-instrumentation-fastapi
 opentelemetry-instrumentation-celery
 opentelemetry-exporter-otlp
+python-jose
+passlib[bcrypt]
