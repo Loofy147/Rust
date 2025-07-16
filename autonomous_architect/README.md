@@ -26,6 +26,28 @@ orchestrator = AutonomousArchitectureOrchestrator(default_config)
 # await orchestrator.start_orchestration()
 ```
 
+## CLI Usage
+
+```bash
+python -m autonomous_architect.cli run        # Run orchestrator event loop
+python -m autonomous_architect.cli analyze    # Run ML analysis
+```
+
+## API Usage (for CI/CD and Dashboards)
+
+- `/status` — Get agent/orchestrator status
+- `/trigger_analysis` — Trigger ML analysis
+- `/ml_insights` — Get latest ML insights (patterns, anomalies, recommendations)
+
+## CI/CD Integration
+
+- Call `/trigger_analysis` or `python -m autonomous_architect.cli analyze` in your build pipeline
+- Use `/ml_insights` for automated quality gates or dashboard reporting
+
+## Dashboard Integration
+
+- Connect to the API for real-time ML insights and agent/orchestrator status
+
 ## Directory Structure
 - `agents/` - Agent base and specializations
 - `codebase_graph.py` - Intelligent codebase graph
