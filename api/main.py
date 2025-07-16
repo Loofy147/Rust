@@ -107,14 +107,27 @@ async def websocket_task_updates(websocket: WebSocket, task_id: str):
         celery_id = tasks[task_id]["celery_id"]
         result = AsyncResult(celery_id, app=celery_app)
         while not result.ready():
-            await websocket.receive_text()  # Keep connection open
+            try:
+                await websocket.receive_text()  # Keep connection open
+            except Exception as e:
+                logger.error(f"WebSocket receive error: {e}")
+                await websocket.send_json({"error": f"WebSocket error: {str(e)}"})
+                await websocket.close()
+                return
         try:
             output = result.get()
-            tasks[task_id]["status"] = "completed"
-            tasks[task_id]["result"] = output["result"]
+            if output.get("status") == "failed":
+                tasks[task_id]["status"] = "failed"
+                tasks[task_id]["result"] = output["result"]
+                await websocket.send_json({"status": "failed", "result": output["result"]})
+            else:
+                tasks[task_id]["status"] = "completed"
+                tasks[task_id]["result"] = output["result"]
+                await websocket.send_json({"status": "completed", "result": output["result"]})
         except Exception as e:
-            tasks[task_id]["status"] = "failed"
-            tasks[task_id]["result"] = str(e)
-        await websocket.send_json({"status": tasks[task_id]["status"], "result": tasks[task_id]["result"]})
+            logger.error(f"WebSocket result error: {e}")
+            await websocket.send_json({"error": f"Result error: {str(e)}"})
+            await websocket.close()
     except WebSocketDisconnect:
+        logger.info(f"WebSocket disconnected for task {task_id}")
         ws_connections[task_id].remove(websocket)

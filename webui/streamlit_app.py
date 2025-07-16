@@ -67,6 +67,9 @@ if "last_task_id" in st.session_state:
             while True:
                 msg = ws.recv()
                 data = json.loads(msg)
+                if "error" in data:
+                    status_placeholder.error(f"WebSocket error: {data['error']}")
+                    break
                 status_placeholder.info(f"Status: {data['status']}")
                 if data["result"]:
                     result_placeholder.code(data["result"])

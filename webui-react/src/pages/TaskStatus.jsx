@@ -25,6 +25,11 @@ function TaskStatus({ auth, taskId }) {
       wsRef.current = new window.WebSocket(wsUrl);
       wsRef.current.onmessage = (event) => {
         const data = JSON.parse(event.data);
+        if (data.error) {
+          setError(data.error);
+          wsRef.current.close();
+          return;
+        }
         setStatus(data.status);
         if (data.result) setResult(data.result);
       };
