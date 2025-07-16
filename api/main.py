@@ -16,6 +16,10 @@ from slowapi.errors import RateLimitExceeded
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_client import Counter
 
+# --- Celery ---
+from celery.result import AsyncResult
+from celery import Celery
+
 # Import the Rust extension (built by maturin)
 try:
     reasoning_agent = importlib.import_module("reasoning_agent")
@@ -51,6 +55,10 @@ LLM_ERRORS = Counter("llm_errors_total", "Total LLM call errors", ["model"])
 DB_WRITES = Counter("db_writes_total", "Total DB write operations")
 DB_READS = Counter("db_reads_total", "Total DB read operations")
 
+# --- Celery config ---
+REDIS_URL = os.environ.get("REDIS_URL", "redis://redis:6379/0")
+celery = Celery("main", broker=REDIS_URL, backend=REDIS_URL)
+
 # --- API Key Auth ---
 def get_api_keys():
     keys = os.environ.get("API_KEYS", "testkey").split(",")
@@ -85,9 +93,14 @@ class TaskRequest(BaseModel):
     temperature: float = 0.7
 
 class TaskResponse(BaseModel):
-    answer: str
-    id: int
-    created_at: datetime
+    task_id: str
+
+class ResultResponse(BaseModel):
+    answer: str | None = None
+    id: int | None = None
+    created_at: datetime | None = None
+    status: str
+    error: str | None = None
 
 class QueryResponse(BaseModel):
     id: int
@@ -104,33 +117,37 @@ class QueryResponse(BaseModel):
 @limiter.limit(get_rate_limit())
 async def submit_task(
     req: TaskRequest,
-    db: Session = Depends(get_db),
     x_api_key: str = Depends(verify_api_key),
     request: Request = None
 ):
-    if not reasoning_agent:
-        raise HTTPException(status_code=500, detail="Rust extension not loaded")
-    try:
-        LLM_CALLS.labels(req.model).inc()
-        answer = reasoning_agent.call_openai(
-            req.prompt, req.model, req.max_tokens, req.temperature
-        )
-    except Exception as e:
-        LLM_ERRORS.labels(req.model).inc()
-        raise HTTPException(status_code=500, detail=f"LLM error: {e}")
-    record = TaskRecord(
-        prompt=req.prompt,
-        model=req.model,
-        max_tokens=req.max_tokens,
-        temperature=req.temperature,
-        answer=answer,
-        api_key=x_api_key
+    # Enqueue async LLM task
+    LLM_CALLS.labels(req.model).inc()
+    task = celery.send_task(
+        "api.worker.llm_task",
+        args=[req.prompt, req.model, req.max_tokens, req.temperature, x_api_key],
     )
-    db.add(record)
-    db.commit()
-    db.refresh(record)
-    DB_WRITES.inc()
-    return TaskResponse(answer=record.answer, id=record.id, created_at=record.created_at)
+    return TaskResponse(task_id=task.id)
+
+@app.get("/result/{task_id}", response_model=ResultResponse)
+@limiter.limit(get_rate_limit())
+async def get_result(task_id: str, x_api_key: str = Depends(verify_api_key)):
+    result = AsyncResult(task_id, app=celery)
+    if result.state == "PENDING":
+        return ResultResponse(status="pending")
+    elif result.state == "STARTED":
+        return ResultResponse(status="started")
+    elif result.state == "FAILURE":
+        return ResultResponse(status="failure", error=str(result.result))
+    elif result.state == "SUCCESS":
+        data = result.result
+        return ResultResponse(
+            answer=data.get("answer"),
+            id=data.get("id"),
+            created_at=data.get("created_at"),
+            status="success"
+        )
+    else:
+        return ResultResponse(status=result.state.lower())
 
 @app.get("/query", response_model=list[QueryResponse])
 @limiter.limit(get_rate_limit())
@@ -176,4 +193,5 @@ def healthz():
 # - All tasks/answers persisted in SQLite (configurable via DATABASE_URL)
 # - Rust LLM plugin is called via Python extension
 # - Prometheus metrics for LLM, DB, and API
+# - Async LLM tasks via Celery+Redis
 # - Ready for extension: OAuth2, async queue, Prometheus, etc.

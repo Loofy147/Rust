@@ -37,8 +37,8 @@ WORKDIR /app
 # Copy built wheel from build stage
 COPY --from=build /app/ReasoningAgent/target/wheels/*.whl ./
 
-# Install FastAPI, Uvicorn, SQLAlchemy, slowapi, prometheus, and the Rust extension
-RUN pip install *.whl fastapi uvicorn sqlalchemy pydantic slowapi prometheus_fastapi_instrumentator prometheus_client
+# Install FastAPI, Uvicorn, SQLAlchemy, slowapi, prometheus, celery, redis, and the Rust extension
+RUN pip install *.whl fastapi uvicorn sqlalchemy pydantic slowapi prometheus_fastapi_instrumentator prometheus_client celery redis
 
 # Copy API code
 COPY ./api ./api
@@ -46,5 +46,8 @@ COPY ./api ./api
 # Expose port
 EXPOSE 8000
 
-# Entrypoint
+# Entrypoint for API (default)
 CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+# Entrypoint for Celery worker (override in docker-compose)
+# CMD ["celery", "-A", "api.worker", "worker", "--loglevel=info"]
