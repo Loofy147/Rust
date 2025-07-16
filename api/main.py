@@ -14,6 +14,12 @@ from vector_store.chroma_store import ChromaVectorStore
 import uuid
 from hashlib import sha256
 import secrets
+import logging
+import sys
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.requests import Request as FastAPIRequest
+import json
 
 # --- Rate limiting ---
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -90,7 +96,56 @@ Base.metadata.create_all(bind=engine)
 
 DEFAULT_DAILY_QUOTA = int(os.environ.get("DAILY_QUOTA", 100))
 
+# --- Structured logging (JSON) ---
+class JsonFormatter(logging.Formatter):
+    def format(self, record):
+        log_record = {
+            "level": record.levelname,
+            "time": self.formatTime(record, self.datefmt),
+            "message": record.getMessage(),
+            "name": record.name,
+        }
+        if record.exc_info:
+            log_record["exc_info"] = self.formatException(record.exc_info)
+        return json.dumps(log_record)
+
+handler = logging.StreamHandler(sys.stdout)
+handler.setFormatter(JsonFormatter())
+logging.basicConfig(level=logging.INFO, handlers=[handler])
+logger = logging.getLogger("reasoning_agent")
+
+# --- FastAPI app with CORS and security headers ---
 app = FastAPI(title="ReasoningAgent API")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.middleware("http")
+async def add_security_headers(request: FastAPIRequest, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    return response
+
+# --- Global error handler ---
+@app.exception_handler(Exception)
+async def global_exception_handler(request: FastAPIRequest, exc: Exception):
+    logger.error(f"Unhandled error: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error", "error": str(exc)},
+    )
+
+# --- Backup/restore and monitoring best practices ---
+# - Backup: Copy SQLite DBs (reasoning_agent.db, kg.db) and Chroma vector store dir (chroma_data/)
+# - Restore: Replace files and restart containers
+# - Monitoring: Use Prometheus metrics endpoint, logs, and audit log
+# - Security: Use HTTPS in production, manage secrets securely, pin dependencies
 
 # --- Prometheus Instrumentation ---
 Instrumentator().instrument(app).expose(app, include_in_schema=False, endpoint="/metrics")
@@ -537,7 +592,6 @@ def healthz():
 # - Usage tracking and quota enforcement for API keys and users.
 
 from kg.sqlite_kg import SQLiteKG
-import json
 
 kg = SQLiteKG()
 
