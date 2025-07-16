@@ -52,6 +52,13 @@ class AdvancedOrchestrator:
                     {"type": "monitor", "metrics": metrics}
                 )
                 print("[SelfOptimizationAgent Suggestions]", result)
+            # Send metrics to RL-based SelfOptimizationAgent if loaded
+            if 'self_optimization_rl_agent' in self.plugin_loader.agent_pools:
+                result_rl = self.plugin_loader.assign_task(
+                    'self_optimization_rl_agent',
+                    {"type": "monitor", "metrics": metrics}
+                )
+                print("[SelfOptimizationRLAgent Suggestions]", result_rl)
             time.sleep(5)
 
     def run(self):

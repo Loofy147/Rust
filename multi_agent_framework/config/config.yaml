@@ -33,3 +33,10 @@ storage:
 plugins:
   - name: custom_agent
     path: plugins/custom_agent.py
+    pool_size: 1
+  - name: self_optimization_agent
+    path: plugins/self_optimization_agent.py
+    pool_size: 1
+  - name: self_optimization_rl_agent
+    path: plugins/self_optimization_rl_agent.py
+    pool_size: 1
