@@ -54,6 +54,10 @@ logger = logging.getLogger("api")
 def metrics():
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
 @app.post("/agents/register", dependencies=[Depends(check_api_key)])
 def register_node(payload: dict = Body(...), db: Session = Depends(get_db)):
     node_id = payload.get('node_id')
