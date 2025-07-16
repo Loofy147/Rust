@@ -1,0 +1,6 @@
+global:
+  scrape_interval: 5s
+scrape_configs:
+  - job_name: 'orchestrator'
+    static_configs:
+      - targets: ['orchestrator:8001', 'orchestrator:8002']
