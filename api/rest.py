@@ -80,13 +80,24 @@ def node_heartbeat(payload: dict = Body(...)):
         return {"status": "heartbeat", "node_id": node_id}
     return {"error": "Node not registered"}
 
+# Advanced task status tracking and reassignment
+TASK_STATUS = {}  # task_id -> {status, node_id, timestamps, ...}
+TASK_TIMEOUT = 30  # seconds
+
 @app.post("/tasks/submit")
 def submit_task(payload: dict = Body(...)):
+    # Assign unique task_id
+    import uuid, time as t
+    task_id = payload.get('id') or str(uuid.uuid4())
+    payload['id'] = task_id
+    payload['submitted_at'] = t.time()
+    payload['status'] = 'queued'
+    TASK_STATUS[task_id] = {'status': 'queued', 'submitted_at': payload['submitted_at'], 'task': payload}
     # Smart assignment based on capabilities and load
     required = payload.get('required', {})
     best_node = None
     best_load = float('inf')
-    now = time.time()
+    now = t.time()
     for node_id, info in NODES.items():
         if now - info['last_seen'] > 15:
             continue  # skip dead nodes
@@ -100,24 +111,55 @@ def submit_task(payload: dict = Body(...)):
         if best_node not in NODE_TASKS:
             NODE_TASKS[best_node] = []
         NODE_TASKS[best_node].append(payload)
-        return {"status": "assigned", "node_id": best_node, "task": payload}
+        TASK_STATUS[task_id]['status'] = 'assigned'
+        TASK_STATUS[task_id]['node_id'] = best_node
+        TASK_STATUS[task_id]['assigned_at'] = now
+        return {"status": "assigned", "node_id": best_node, "task": payload, "task_id": task_id}
     else:
         QUEUED_TASKS.append(payload)
-        return {"status": "queued", "reason": "no suitable node", "task": payload}
+        return {"status": "queued", "reason": "no suitable node", "task": payload, "task_id": task_id}
+
+@app.get("/tasks/status/{task_id}")
+def get_task_status_api(task_id: str):
+    return TASK_STATUS.get(task_id, {})
+
+@app.post("/tasks/result")
+def report_result(payload: dict = Body(...)):
+    node_id = payload.get('node_id')
+    task_id = payload.get('task_id')
+    result = payload.get('result')
+    now = time.time()
+    if task_id in TASK_STATUS:
+        TASK_STATUS[task_id]['status'] = 'done'
+        TASK_STATUS[task_id]['result'] = result
+        TASK_STATUS[task_id]['completed_at'] = now
+    TASK_RESULTS[task_id] = {'node_id': node_id, 'result': result, 'timestamp': now}
+    return {"status": "result_received", "task_id": task_id}
 
 @app.post("/tasks/reject")
 def reject_task(payload: dict = Body(...)):
     task = payload.get('task')
+    task_id = task.get('id')
     QUEUED_TASKS.append(task)
+    if task_id in TASK_STATUS:
+        TASK_STATUS[task_id]['status'] = 'queued'
+        TASK_STATUS[task_id]['node_id'] = None
     return {"status": "requeued", "task": task}
 
 @app.get("/tasks/queued")
 def get_queued_tasks():
+    # Reassign timed-out tasks
+    now = time.time()
+    for tid, info in list(TASK_STATUS.items()):
+        if info['status'] == 'assigned' and now - info.get('assigned_at', 0) > TASK_TIMEOUT:
+            info['status'] = 'queued'
+            info['node_id'] = None
+            QUEUED_TASKS.append(info['task'])
     return QUEUED_TASKS
 
-@app.get("/tasks/{task_id}", dependencies=[Depends(check_auth)])
-def get_task_status(task_id: int):
-    return task_queue_agent.get_task_status(task_id)
+@app.get("/tasks/in_progress")
+def get_in_progress_tasks():
+    return {tid: info for tid, info in TASK_STATUS.items() if info['status'] == 'assigned'}
 
 @app.post("/agents/register")
 def register_node(payload: dict = Body(...)):
