@@ -9,6 +9,7 @@ from fastapi.responses import Response
 import numpy as np
 import json
 import httpx
+from external_ai_agent import external_ai_agent
 
 app = FastAPI()
 orchestrator = AsyncOrchestrator()
@@ -68,3 +69,13 @@ async def external_api_call(token: str = Depends(oauth2_scheme)):
         if resp.status_code != 200:
             raise HTTPException(status_code=resp.status_code, detail=resp.text)
         return resp.json()
+
+@app.post("/orchestrator/external_ai")
+async def external_ai(
+    tool_name: str = Body(...),
+    data: dict = Body(...),
+    parameters: dict = Body({}),
+    token: str = Depends(oauth2_scheme)
+):
+    result = await external_ai_agent.call_tool(tool_name, data, parameters)
+    return result
