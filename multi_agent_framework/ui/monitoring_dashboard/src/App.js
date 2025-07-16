@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { API_BASE_URL } from './config';
-import { AppBar, Toolbar, Typography, Box, Paper, Grid, Alert, CircularProgress } from '@mui/material';
+import { AppBar, Toolbar, Typography, Box, Paper, Grid, Alert, CircularProgress, Dialog, DialogTitle, DialogContent, Button, Table, TableHead, TableRow, TableCell, TableBody } from '@mui/material';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar } from 'recharts';
 
 function parsePrometheusMetrics(metricsText) {
@@ -21,10 +21,16 @@ function App() {
   const [health, setHealth] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [workflowModalOpen, setWorkflowModalOpen] = useState(false);
+  const [workflowHistory, setWorkflowHistory] = useState({ history: [], feedback: [] });
+  const [agentModalOpen, setAgentModalOpen] = useState(false);
+  const [agentLogs, setAgentLogs] = useState([]);
+  const [userAnalytics, setUserAnalytics] = useState([]);
 
   useEffect(() => {
     fetchAll();
-    const interval = setInterval(fetchAll, 5000);
+    fetchUserAnalytics();
+    const interval = setInterval(() => { fetchAll(); fetchUserAnalytics(); }, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -42,6 +48,23 @@ function App() {
       setError('Failed to fetch metrics or health');
     }
     setLoading(false);
+  };
+
+  const fetchWorkflowHistory = async (workflowId) => {
+    const res = await axios.get(`${API_BASE_URL}/workflow_history/${workflowId}`);
+    setWorkflowHistory(res.data);
+    setWorkflowModalOpen(true);
+  };
+
+  const fetchAgentLogs = async (agentId) => {
+    const res = await axios.get(`${API_BASE_URL}/agent_logs/${agentId}`);
+    setAgentLogs(res.data.logs);
+    setAgentModalOpen(true);
+  };
+
+  const fetchUserAnalytics = async () => {
+    const res = await axios.get(`${API_BASE_URL}/user_analytics`);
+    setUserAnalytics(res.data.leaderboard);
   };
 
   // Example: extract some metrics
@@ -75,6 +98,7 @@ function App() {
               <Typography variant="h6">Agent Tasks</Typography>
               <Typography>Total: {agentTasks.reduce((a, b) => a + b, 0)}</Typography>
               <Typography>Errors: {agentErrors.reduce((a, b) => a + b, 0)}</Typography>
+              <Button onClick={() => fetchAgentLogs('agent_id_example')}>Drill Down</Button>
             </Paper>
           </Grid>
           <Grid item xs={12} md={6}>
@@ -88,9 +112,82 @@ function App() {
                 <Legend />
                 <Bar dataKey="duration" fill="#8884d8" />
               </BarChart>
+              <Button onClick={() => fetchWorkflowHistory('workflow_id_example')}>Drill Down</Button>
+            </Paper>
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <Paper elevation={2} style={{ padding: 16 }}>
+              <Typography variant="h6">User Analytics</Typography>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>User</TableCell>
+                    <TableCell>Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {userAnalytics.map(([user, count], idx) => (
+                    <TableRow key={idx}>
+                      <TableCell>{user}</TableCell>
+                      <TableCell>{count}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </Paper>
           </Grid>
         </Grid>
+        {/* Workflow Drill-down Modal */}
+        <Dialog open={workflowModalOpen} onClose={() => setWorkflowModalOpen(false)} maxWidth="md" fullWidth>
+          <DialogTitle>Workflow Run History</DialogTitle>
+          <DialogContent>
+            <Typography variant="subtitle1">History</Typography>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Step</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell>Timestamp</TableCell>
+                  <TableCell>Output</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {workflowHistory.history.map((h, idx) => (
+                  <TableRow key={idx}>
+                    <TableCell>{h.step_id}</TableCell>
+                    <TableCell>{h.status}</TableCell>
+                    <TableCell>{new Date(h.timestamp * 1000).toLocaleString()}</TableCell>
+                    <TableCell><pre style={{ maxWidth: 200, overflow: 'auto' }}>{JSON.stringify(h.output, null, 2)}</pre></TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            <Typography variant="subtitle1" style={{ marginTop: 16 }}>Feedback</Typography>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Step</TableCell>
+                  <TableCell>Feedback</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {workflowHistory.feedback.map((f, idx) => (
+                  <TableRow key={idx}>
+                    <TableCell>{f.step_id}</TableCell>
+                    <TableCell><pre style={{ maxWidth: 300, overflow: 'auto' }}>{JSON.stringify(f.feedback, null, 2)}</pre></TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </DialogContent>
+        </Dialog>
+        {/* Agent Drill-down Modal */}
+        <Dialog open={agentModalOpen} onClose={() => setAgentModalOpen(false)} maxWidth="md" fullWidth>
+          <DialogTitle>Agent Logs</DialogTitle>
+          <DialogContent>
+            <pre style={{ maxHeight: 400, overflow: 'auto' }}>{JSON.stringify(agentLogs, null, 2)}</pre>
+          </DialogContent>
+        </Dialog>
       </Box>
     </Box>
   );

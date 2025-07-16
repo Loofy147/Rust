@@ -240,3 +240,31 @@ async def hitl_qa(request: Request):
     })
     # Optionally, trigger re-processing or finalize output
     return {"status": "qa_logged"}
+
+@app.get("/workflow_history/{workflow_id}")
+async def workflow_history(workflow_id: str, user=Depends(require_role("reviewer"))):
+    history = orchestrator.workflow_engine.get_run_history(workflow_id)
+    feedback = orchestrator.workflow_engine.get_feedback_log(workflow_id)
+    return {"history": history, "feedback": feedback}
+
+@app.get("/agent_logs/{agent_id}")
+async def agent_logs(agent_id: str, user=Depends(require_role("reviewer"))):
+    # For demo: return recent logs from agent (if available)
+    agent = orchestrator.registry.get(agent_id)
+    if agent and hasattr(agent['info'], 'instance'):
+        # Assume agent instance has a logs attribute or method
+        logs = getattr(agent['info']['instance'], 'logs', [])
+        return {"logs": logs}
+    return {"logs": []}
+
+@app.get("/user_analytics")
+async def user_analytics(user=Depends(require_role("reviewer"))):
+    # For demo: count actions in feedback logs by user
+    user_counts = {}
+    for wf_id in orchestrator.workflow_engine._feedback_log:
+        for entry in orchestrator.workflow_engine._feedback_log[wf_id]:
+            u = entry.get('feedback', {}).get('user') or entry.get('user')
+            if u:
+                user_counts[u] = user_counts.get(u, 0) + 1
+    leaderboard = sorted(user_counts.items(), key=lambda x: -x[1])
+    return {"leaderboard": leaderboard}
