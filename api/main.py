@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Depends, Header, Request, status, Query
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text, func
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from datetime import datetime, timedelta, date
@@ -340,6 +340,19 @@ class UsageReport(BaseModel):
     day: str
     count: int
 
+class UsageTrend(BaseModel):
+    day: str
+    count: int
+
+class TopUser(BaseModel):
+    username: str
+    count: int
+
+class TopModelProvider(BaseModel):
+    model: str
+    provider: str
+    count: int
+
 # --- OAuth2 /token endpoint ---
 @app.post("/token", response_model=Token)
 def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
@@ -670,6 +683,24 @@ def get_all_usage(admin: User = Depends(require_admin_user)):
     db = SessionLocal()
     q = db.query(Usage.day, Usage.count).order_by(Usage.day.desc()).all()
     return [UsageReport(day=day, count=count) for day, count in q]
+
+@app.get("/analytics/usage_trend", response_model=list[UsageTrend])
+def usage_trend(admin: User = Depends(require_admin_user)):
+    db = SessionLocal()
+    q = db.query(Usage.day, func.sum(Usage.count)).group_by(Usage.day).order_by(Usage.day.desc()).limit(30)
+    return [UsageTrend(day=day, count=count) for day, count in q]
+
+@app.get("/analytics/top_users", response_model=list[TopUser])
+def top_users(admin: User = Depends(require_admin_user)):
+    db = SessionLocal()
+    q = db.query(User.username, func.sum(Usage.count)).join(Usage, Usage.user_id == User.id).group_by(User.username).order_by(func.sum(Usage.count).desc()).limit(10)
+    return [TopUser(username=u, count=c) for u, c in q]
+
+@app.get("/analytics/top_models", response_model=list[TopModelProvider])
+def top_models(admin: User = Depends(require_admin_user)):
+    db = SessionLocal()
+    q = db.query(TaskRecord.model, TaskRecord.api_key, func.count(TaskRecord.id)).group_by(TaskRecord.model, TaskRecord.api_key).order_by(func.count(TaskRecord.id).desc()).limit(10)
+    return [TopModelProvider(model=m, provider=p or "unknown", count=c) for m, p, c in q]
 
 def increment_usage(user: User = None, api_key: str = None):
     db = SessionLocal()
