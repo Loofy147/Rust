@@ -1,17 +1,35 @@
 import os
+import importlib
 from agent.plugins.llm_openai import OpenAILLM
 from agent.plugins.kg_sqlalchemy import SQLAlchemyKG
 from agent.plugins.vector_chroma import ChromaVectorStore
 from agent.metrics import PrintMetrics
 from agent.prompt_builder import PromptBuilder
 
+# Mock plugins
+try:
+    from agent.plugins.mock_llm import MockLLM
+except ImportError:
+    MockLLM = None
+
 def load_plugins():
+    dev_mode = os.getenv("DEV_MODE", "0") == "1"
+    mock_plugins = os.getenv("MOCK_PLUGINS", "0") == "1"
     llm_type = os.getenv("LLM_PLUGIN", "openai")
     kg_type = os.getenv("KG_PLUGIN", "sqlalchemy")
     vector_type = os.getenv("VECTOR_PLUGIN", "chroma")
     metrics_type = os.getenv("METRICS_PLUGIN", "print")
 
-    if llm_type == "openai":
+    if dev_mode:
+        importlib.reload(importlib.import_module("agent.plugins.llm_openai"))
+        importlib.reload(importlib.import_module("agent.plugins.kg_sqlalchemy"))
+        importlib.reload(importlib.import_module("agent.plugins.vector_chroma"))
+        if MockLLM:
+            importlib.reload(importlib.import_module("agent.plugins.mock_llm"))
+
+    if mock_plugins and MockLLM:
+        llm = MockLLM()
+    elif llm_type == "openai":
         llm = OpenAILLM(api_key=os.getenv("OPENAI_API_KEY", "sk-test"))
     else:
         raise NotImplementedError(f"LLM plugin {llm_type} not implemented")
