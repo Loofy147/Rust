@@ -13,6 +13,7 @@ from prometheus_client import Counter, Gauge, generate_latest, CONTENT_TYPE_LATE
 from fastapi.responses import Response
 import logging
 import json
+from sqlalchemy import func
 
 load_dotenv()
 API_KEY = os.environ.get('API_KEY', 'changeme')
@@ -198,3 +199,31 @@ def vector_search(query: dict = Body(...)):
     k = query.get('k', 5)
     results = faiss_db.search(np.array(vector), k)
     return {"results": results}
+
+@app.get("/analytics/throughput", dependencies=[Depends(check_api_key)])
+def analytics_throughput(db: Session = Depends(get_db)):
+    now = time.time()
+    one_hour_ago = now - 3600
+    count = db.query(Task).filter(Task.completed_at != None, Task.completed_at > one_hour_ago).count()
+    return {"tasks_completed_last_hour": count}
+
+@app.get("/analytics/errors", dependencies=[Depends(check_api_key)])
+def analytics_errors(db: Session = Depends(get_db)):
+    # Assume failed tasks have 'failed' in result or status
+    failed = db.query(Task).filter(Task.status == 'done', Task.result.ilike('%error%')).count()
+    return {"failed_tasks": failed}
+
+@app.get("/analytics/node_uptime", dependencies=[Depends(check_api_key)])
+def analytics_node_uptime(db: Session = Depends(get_db)):
+    now = time.time()
+    nodes = db.query(Node).all()
+    return {n.node_id: {"last_seen_secs_ago": now-n.last_seen} for n in nodes}
+
+@app.get("/analytics/task_types", dependencies=[Depends(check_api_key)])
+def analytics_task_types(db: Session = Depends(get_db)):
+    rows = db.query(Task.payload).all()
+    type_counts = {}
+    for (payload,) in rows:
+        ttype = (payload or {}).get('type', 'unknown')
+        type_counts[ttype] = type_counts.get(ttype, 0) + 1
+    return type_counts
