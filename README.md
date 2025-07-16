@@ -5,6 +5,7 @@
 - Python FastAPI REST API: `/task`, `/query`, `/metrics`
 - Dockerized for reproducibility and orchestration
 - Ready for extension: persistence, metrics, multi-LLM, etc.
+- **API Key authentication for all endpoints**
 
 ## Quickstart (Docker)
 
@@ -15,13 +16,27 @@
 
 2. **Run the container:**
    ```sh
-   docker run -e OPENAI_API_KEY=sk-... -p 8000:8000 reasoning-agent
+   docker run -e OPENAI_API_KEY=sk-... -e API_KEYS=key1,key2 -p 8000:8000 reasoning-agent
    ```
 
 3. **API Endpoints:**
    - `POST /task` — Submit a prompt, get LLM answer
    - `GET /metrics` — Health/metrics endpoint
-   - `GET /query` — (To be implemented) Query previous answers
+   - `GET /query` — Query previous answers
+
+## Authentication
+
+All endpoints require an API key via the `X-API-Key` header.
+
+- Set valid keys in the `API_KEYS` environment variable (comma-separated).
+- Example: `API_KEYS=key1,key2,key3`
+- Example request:
+  ```sh
+  curl -X POST http://localhost:8000/task \
+    -H 'X-API-Key: key1' \
+    -H 'Content-Type: application/json' \
+    -d '{"prompt": "Hello, world!"}'
+  ```
 
 ## Local Development (Advanced)
 - Use `pyenv` to install Python 3.12
@@ -39,6 +54,7 @@
 
 ## Environment Variables
 - `OPENAI_API_KEY` — Required for OpenAI LLM plugin
+- `API_KEYS` — Comma-separated list of valid API keys
 
 ---
 

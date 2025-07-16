@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Header
 from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text
 from sqlalchemy.ext.declarative import declarative_base
@@ -39,6 +39,19 @@ def get_db():
     finally:
         db.close()
 
+# --- API Key Auth ---
+def get_api_keys():
+    keys = os.environ.get("API_KEYS", "")
+    return set(k.strip() for k in keys.split(",") if k.strip())
+
+def api_key_auth(x_api_key: str = Header(...)):
+    valid_keys = get_api_keys()
+    if not valid_keys:
+        raise HTTPException(status_code=500, detail="API key auth not configured")
+    if x_api_key not in valid_keys:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    return x_api_key
+
 class TaskRequest(BaseModel):
     prompt: str
     model: str = "text-davinci-003"
@@ -55,7 +68,11 @@ class QueryResponse(BaseModel):
     created_at: datetime
 
 @app.post("/task", response_model=TaskResponse)
-def submit_task(req: TaskRequest, db: Session = Depends(get_db)):
+def submit_task(
+    req: TaskRequest,
+    db: Session = Depends(get_db),
+    api_key: str = Depends(api_key_auth)
+):
     if not reasoning_agent:
         raise HTTPException(status_code=500, detail="Rust extension not loaded")
     try:
@@ -78,12 +95,19 @@ def submit_task(req: TaskRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/metrics")
-def metrics(db: Session = Depends(get_db)):
+def metrics(
+    db: Session = Depends(get_db),
+    api_key: str = Depends(api_key_auth)
+):
     count = db.query(TaskRecord).count()
     return {"status": "ok", "tasks_processed": count}
 
 @app.get("/query", response_model=list[QueryResponse])
-def query(prompt: str = None, db: Session = Depends(get_db)):
+def query(
+    prompt: str = None,
+    db: Session = Depends(get_db),
+    api_key: str = Depends(api_key_auth)
+):
     q = db.query(TaskRecord)
     if prompt:
         q = q.filter(TaskRecord.prompt.contains(prompt))
