@@ -1,4 +1,4 @@
-# ReasoningAgent Architecture
+# Architecture
 
 ```mermaid
 graph TD
@@ -17,10 +17,6 @@ graph TD
 - **WebSocket**: For live task updates
 - **Prometheus**: For metrics scraping
 - **Dockerized**: For easy deployment
-
-## Plugin System
-- Plugins are loaded dynamically based on config/env
-- Hot reload supported in dev mode
 
 ## Task Flow
 1. Task submitted via REST
