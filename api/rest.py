@@ -11,6 +11,8 @@ from vector_db import SimpleFaissDB
 import numpy as np
 from prometheus_client import Counter, Gauge, generate_latest, CONTENT_TYPE_LATEST
 from fastapi.responses import Response
+import logging
+import json
 
 load_dotenv()
 API_KEY = os.environ.get('API_KEY', 'changeme')
@@ -29,6 +31,24 @@ TASKS_SUBMITTED = Counter('tasks_submitted', 'Total tasks submitted')
 TASKS_COMPLETED = Counter('tasks_completed', 'Total tasks completed')
 NODES_REGISTERED = Gauge('nodes_registered', 'Current registered nodes')
 
+# Configure JSON logging
+class JsonFormatter(logging.Formatter):
+    def format(self, record):
+        log_record = {
+            'level': record.levelname,
+            'time': self.formatTime(record, self.datefmt),
+            'message': record.getMessage(),
+            'name': record.name,
+        }
+        if record.args:
+            log_record['args'] = record.args
+        return json.dumps(log_record)
+
+handler = logging.StreamHandler()
+handler.setFormatter(JsonFormatter())
+logging.basicConfig(level=logging.INFO, handlers=[handler])
+logger = logging.getLogger("api")
+
 @app.get("/metrics")
 def metrics():
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
@@ -40,9 +60,11 @@ def register_node(payload: dict = Body(...), db: Session = Depends(get_db)):
     if not node:
         node = Node(node_id=node_id, status='registered', last_seen=time.time(), capabilities={}, load=0)
         db.add(node)
+        logger.info(f"Node registered: {node_id}")
     else:
         node.status = 'registered'
         node.last_seen = time.time()
+        logger.info(f"Node re-registered: {node_id}")
     db.commit()
     NODES_REGISTERED.set(db.query(Node).count())
     return {"status": "registered", "node_id": node_id}
@@ -89,6 +111,7 @@ def submit_task(payload: dict = Body(...), db: Session = Depends(get_db)):
     db.add(task)
     db.commit()
     TASKS_SUBMITTED.inc()
+    logger.info(f"Task submitted: {task_id}")
     required = payload.get('required', {})
     best_node = None
     best_load = float('inf')
@@ -130,6 +153,7 @@ def report_result(payload: dict = Body(...), db: Session = Depends(get_db)):
         task.completed_at = now
         db.commit()
         TASKS_COMPLETED.inc()
+        logger.info(f"Task completed: {task_id}")
     return {"status": "result_received", "task_id": task_id}
 
 @app.post("/tasks/reject", dependencies=[Depends(check_api_key)])
