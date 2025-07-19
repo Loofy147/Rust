@@ -5,33 +5,36 @@ from core.event_store import EventStore
 
 class WorkflowEngine:
     """
-    Advanced workflow engine supporting DAGs, branching, conditional logic, retries, timeouts, memory, and run history.
+    Advanced workflow engine for DAGs, branching, and conditional logic.
     """
+
     def __init__(self, event_store=None):
         self._workflows = {}
         self._lock = threading.Lock()
         self.event_store = event_store or EventStore()
         self._read_model = {}
-        self._hitl_approvals = {}  # workflow_id -> set of approved step ids
-        self._memory = {}  # workflow_id -> {step_id: output}
-        self._feedback_log = {}  # workflow_id -> list of feedback dicts
-        self._run_status = {}  # workflow_id -> {step_id: status}
-        self._run_history = {}  # workflow_id -> list of {step_id, status, output, timestamp}
+        self._hitl_approvals = {}  # {workflow_id: {step_id}}
+        self._memory = {}  # {workflow_id: {step_id: output}}
+        self._feedback_log = {}  # {workflow_id: [feedback_dict]}
+        self._run_status = {}  # {workflow_id: {step_id: status}}
+        self._run_history = {}  # {workflow_id: [{step_id, status, ...}]}
 
     def add_workflow(self, workflow_id, steps, dag=False):
         """Add a workflow definition (DAG or chain)."""
         with self._lock:
             if dag:
-                G = nx.DiGraph()
+                graph = nx.DiGraph()
                 for step in steps:
-                    G.add_node(step['id'], **step)
+                    graph.add_node(step['id'], **step)
                 for step in steps:
                     for dep in step.get('depends_on', []):
-                        G.add_edge(dep, step['id'])
-                self._workflows[workflow_id] = G
+                        graph.add_edge(dep, step['id'])
+                self._workflows[workflow_id] = graph
             else:
                 self._workflows[workflow_id] = steps
-            self.event_store.append_event('workflow_added', {'workflow_id': workflow_id, 'steps': steps, 'dag': dag})
+            self.event_store.append_event(
+                'workflow_added',
+                {'workflow_id': workflow_id, 'steps': steps, 'dag': dag})
             self._update_read_model(workflow_id)
             self._hitl_approvals[workflow_id] = set()
             self._memory[workflow_id] = {}
@@ -45,19 +48,33 @@ class WorkflowEngine:
 
     def next_steps(self, workflow_id, completed_steps, memory=None):
         """Return next steps ready to run, considering branching/conditions."""
-        wf = self.get_workflow(workflow_id)
-        if isinstance(wf, nx.DiGraph):
-            ready = [n for n in wf.nodes if all(dep in completed_steps for dep in wf.predecessors(n)) and n not in completed_steps]
+        workflow = self.get_workflow(workflow_id)
+        if isinstance(workflow, nx.DiGraph):
+            ready = [
+                n for n in workflow.nodes
+                if all(dep in completed_steps
+                       for dep in workflow.predecessors(n)) and
+                n not in completed_steps
+            ]
             # Filter by HITL and conditions
-            ready = [n for n in ready if not self._is_hitl_step(wf, n) or n in self._hitl_approvals[workflow_id]]
-            ready = [n for n in ready if self._check_conditions(wf, n, memory)]
+            ready = [
+                n for n in ready
+                if not self._is_hitl_step(workflow, n) or
+                n in self._hitl_approvals[workflow_id]
+            ]
+            ready = [
+                n for n in ready
+                if self._check_conditions(workflow, n, memory)
+            ]
             return ready
         else:
-            for step in wf:
+            for step in workflow:
                 if step['id'] not in completed_steps:
-                    if self._is_hitl_step(step) and step['id'] not in self._hitl_approvals[workflow_id]:
+                    if self._is_hitl_step(
+                            workflow, step
+                    ) and step['id'] not in self._hitl_approvals[workflow_id]:
                         return []
-                    if not self._check_conditions(step, None, memory):
+                    if not self._check_conditions(workflow, step, memory):
                         return []
                     return [step['id']]
             return []
@@ -65,9 +82,12 @@ class WorkflowEngine:
     def approve_hitl_step(self, workflow_id, step_id):
         with self._lock:
             self._hitl_approvals[workflow_id].add(step_id)
-            self.event_store.append_event('hitl_approved', {'workflow_id': workflow_id, 'step_id': step_id})
+            self.event_store.append_event(
+                'hitl_approved',
+                {'workflow_id': workflow_id, 'step_id': step_id})
 
-    def record_step_output(self, workflow_id, step_id, output, status='success'):
+    def record_step_output(self, workflow_id, step_id, output,
+                           status='success'):
         """Record step output, status, and add to run history."""
         with self._lock:
             self._memory[workflow_id][step_id] = output
@@ -85,7 +105,10 @@ class WorkflowEngine:
 
     def log_feedback(self, workflow_id, step_id, feedback):
         with self._lock:
-            self._feedback_log[workflow_id].append({'step_id': step_id, 'feedback': feedback})
+            self._feedback_log[workflow_id].append({
+                'step_id': step_id,
+                'feedback': feedback
+            })
 
     def get_feedback_log(self, workflow_id):
         with self._lock:
@@ -107,7 +130,7 @@ class WorkflowEngine:
             self._run_status[workflow_id][step_id] = 'retry'
 
     def set_timeout(self, workflow_id, step_id, timeout_sec):
-        """Set a timeout for a step (not implemented, stub for async/worker support)."""
+        """Set a timeout for a step (stub for async/worker support)."""
         pass
 
     def _is_hitl_step(self, wf, step):
@@ -121,7 +144,7 @@ class WorkflowEngine:
         if isinstance(wf, nx.DiGraph):
             cond = wf.nodes[step].get('condition')
         else:
-            cond = wf.get('condition')
+            cond = step.get('condition')
         if not cond:
             return True
         # Example: condition = {'step': 'prev', 'equals': 'success'}

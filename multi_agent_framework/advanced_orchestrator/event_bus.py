@@ -1,6 +1,7 @@
 import threading
 from collections import defaultdict
 
+
 class EventBus:
     def __init__(self):
         self._subscribers = defaultdict(list)

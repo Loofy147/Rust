@@ -1,6 +1,7 @@
 from advanced_orchestrator.registry import AgentRegistry
 
 class PlannerAgent:
+
     def __init__(self, agent_id, registry: AgentRegistry):
         self.agent_id = agent_id
         self.registry = registry
@@ -20,7 +21,12 @@ class PlannerAgent:
     def decompose(self, task):
         # Example: break down a generic task into subtasks with required skills
         # In practice, use LLMs or rules
-        return [
-            {"id": f"{task['id']}_1", "skill": "retrieval", "desc": "Retrieve info"},
-            {"id": f"{task['id']}_2", "skill": "summarization", "desc": "Summarize info"}
-        ]
+        return [{
+            "id": f"{task['id']}_1",
+            "skill": "retrieval",
+            "desc": "Retrieve info"
+        }, {
+            "id": f"{task['id']}_2",
+            "skill": "summarization",
+            "desc": "Summarize info"
+        }]

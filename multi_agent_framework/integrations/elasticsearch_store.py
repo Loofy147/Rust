@@ -1,5 +1,6 @@
 from elasticsearch import Elasticsearch
 
+
 class ElasticsearchStore:
     def __init__(self, host='localhost', port=9200, index='documents'):
         self.es = Elasticsearch([{'host': host, 'port': port}])

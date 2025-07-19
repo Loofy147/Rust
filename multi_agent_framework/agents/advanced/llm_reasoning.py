@@ -24,12 +24,14 @@ class LLMReasoningAgent(BaseAgent):
         prompt = f"Context:\n{context}\n\nQuestion: {question}\n"
         if feedback:
             prompt += f"\nPrevious feedback: {feedback}\n"
-        prompt += "\nPlease answer the question, provide your reasoning, and if the question is ambiguous, ask a clarifying question."
+        prompt += ("\nPlease answer the question, provide your reasoning, and "
+                   "if the question is ambiguous, ask a clarifying question.")
         return prompt
 
     def _call_llm(self, prompt):
         # For demo: stub, replace with OpenAI/HF API call
-        # In production, use openai.ChatCompletion.create or transformers pipeline
+        # In production, use openai.ChatCompletion.create or transformers
+        # pipeline
         if 'ambiguous' in prompt.lower():
             return (None, None, 'Can you clarify your question?')
         answer = "This is a grounded, reasoned answer."

@@ -1,5 +1,6 @@
 from advanced_orchestrator.registry import AgentRegistry
 
+
 class MemoryAgent:
     def __init__(self, agent_id, registry: AgentRegistry):
         self.agent_id = agent_id

@@ -150,7 +150,10 @@ async def websocket_updates(websocket: WebSocket):
 @app.get("/plugins")
 async def list_plugins():
     # Stub: Return list of available plugins (from config/plugins dir)
-    return [f for f in (os.listdir('config/plugins') if os.path.exists('config/plugins') else []) if f.endswith('.py')]
+    plugin_dir = 'config/plugins'
+    if os.path.exists(plugin_dir):
+        return [f for f in os.listdir(plugin_dir) if f.endswith('.py')]
+    return []
 
 @app.post("/upload_plugin")
 async def upload_plugin(request: Request):
@@ -160,7 +163,10 @@ async def upload_plugin(request: Request):
 @app.get("/workflows")
 async def list_workflows():
     # Stub: Return list of available workflows (from config dir)
-    return [f for f in (os.listdir('config') if os.path.exists('config')) if f.endswith('.yaml')]
+    config_dir = 'config'
+    if os.path.exists(config_dir):
+        return [f for f in os.listdir(config_dir) if f.endswith('.yaml')]
+    return []
 
 @app.post("/upload_workflow")
 async def upload_workflow(request: Request):
