@@ -1,0 +1,1 @@
+/workspace/target/debug/examples/basic_usage: /workspace/examples/basic_usage.rs /workspace/src/knowledge_graph.rs /workspace/src/lib.rs /workspace/src/metrics.rs /workspace/src/plugins.rs /workspace/src/types.rs /workspace/src/vector_store.rs
