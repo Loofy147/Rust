@@ -17,15 +17,28 @@ plugins:
   enabled:
     - tokenizer
     - normalizer
-    - vectorizer
+    - sentiment_analyzer
+
   tokenizer:
-    type: default
+    module: plugins.tokenizer_plugin
+    class: TokenizerPlugin
     config: {}
+
   normalizer:
-    type: default
+    module: plugins.normalizer_plugin
+    class: NormalizerPlugin
     config: {}
+
   vectorizer:
-    model: all-MiniLM-L6-v2
+    module: plugins.vectorizer_plugin
+    class: VectorizerPlugin
+    config:
+      model: all-MiniLM-L6-v2
+
+  sentiment_analyzer:
+    module: plugins.sentiment_analyzer_plugin
+    class: SentimentAnalyzerPlugin
+    config: {}
 
 api:
   host: 0.0.0.0

@@ -28,10 +28,11 @@ class ProcessorAgent:
         tokens = self.plugin_manager.run('tokenizer', text)
         norm = self.plugin_manager.run('normalizer', text)
         vector = self.plugin_manager.run('vectorizer', norm or text)
+        sentiment = self.plugin_manager.run('sentiment_analyzer', text)
         # LLM processing
         llm_result = self.call_llm(text)
         # Store result
-        self.storage.save({'input': text, 'tokens': tokens, 'norm': norm, 'vector': vector, 'llm': llm_result})
+        self.storage.save({'input': text, 'tokens': tokens, 'norm': norm, 'vector': vector, 'sentiment': sentiment, 'llm': llm_result})
         logging.info(f"Processed task: {text}")
 
     def run(self):
