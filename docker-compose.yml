@@ -1,4 +1,4 @@
-version: '3.8'
+veron: '3.8'
 services:
   db:
     image: postgres:15
@@ -55,9 +55,9 @@ services:
       - backend
     command: ["python", "auto_scaler.py"]
 
-volumes:
+vomes:
   pgdata:
 
-networks:
+netwo:
   backend:
     driver: bridge
