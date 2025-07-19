@@ -1,5 +1,6 @@
 import requests
 
+
 class RetrieverAgent:
     def __init__(self, agent_id, registry):
         self.agent_id = agent_id

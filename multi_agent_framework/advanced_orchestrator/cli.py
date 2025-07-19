@@ -11,11 +11,13 @@ subparsers = parser.add_subparsers(dest="command")
 subparsers.add_parser("list-agents", help="List all registered agents")
 subparsers.add_parser("list-workflows", help="List all workflows")
 
-register_agent_parser = subparsers.add_parser("register-agent", help="Register a new agent")
+register_agent_parser = subparsers.add_parser("register-agent",
+                                            help="Register a new agent")
 register_agent_parser.add_argument("agent_id")
 register_agent_parser.add_argument("skills", nargs="*", default=[])
 
-submit_workflow_parser = subparsers.add_parser("submit-workflow", help="Submit a workflow from YAML file")
+submit_workflow_parser = subparsers.add_parser("submit-workflow",
+                                             help="Submit a workflow from YAML file")
 submit_workflow_parser.add_argument("workflow_file")
 
 subparsers.add_parser("diagnostics", help="Show orchestrator diagnostics")

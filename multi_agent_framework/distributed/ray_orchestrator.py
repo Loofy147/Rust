@@ -1,11 +1,12 @@
 import ray
 import time
 import logging
-from distributed.ray_base import RayAgent
 
 ray.init(ignore_reinit_error=True)
 
+
 class RayOrchestrator:
+
     def __init__(self, config, agent_classes):
         self.config = config
         self.agent_classes = agent_classes
@@ -32,6 +33,7 @@ class RayOrchestrator:
             agent.stop.remote()
         self.logger.info("All agents stopped.")
 
+
 if __name__ == "__main__":
     # Example usage
     from agents.summarization import RaySummarizationAgent
@@ -39,5 +41,8 @@ if __name__ == "__main__":
     agent_classes = {"summarizer": RaySummarizationAgent}
     orchestrator = RayOrchestrator(config, agent_classes)
     orchestrator.launch_agents()
-    orchestrator.send("summarizer", "summarizer", {"type": "summarize", "text": "Ray is a distributed framework."})
+    orchestrator.send("summarizer", "summarizer", {
+        "type": "summarize",
+        "text": "Ray is a distributed framework."
+    })
     orchestrator.monitor()

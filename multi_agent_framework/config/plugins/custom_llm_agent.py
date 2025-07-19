@@ -1,5 +1,6 @@
 from transformers import pipeline
 
+
 class CustomLLMAgent:
     def __init__(self, agent_id, registry):
         self.agent_id = agent_id

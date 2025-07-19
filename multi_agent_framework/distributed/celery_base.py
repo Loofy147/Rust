@@ -4,6 +4,7 @@ import time
 
 celery_app = Celery('agents', broker='redis://localhost:6379/0')
 
+
 class CeleryAgent(Task):
     abstract = True
     name = None

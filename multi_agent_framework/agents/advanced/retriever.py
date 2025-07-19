@@ -1,4 +1,4 @@
-from agents.base import BaseAgent
+from multi_agent_framework.agents.base import BaseAgent
 
 class RetrieverAgent(BaseAgent):
     def __init__(self, agent_id, registry):
@@ -14,7 +14,11 @@ class RetrieverAgent(BaseAgent):
     def _process(self, task):
         query = task.get('query')
         # For demo: return all docs containing a keyword from query
-        results = [doc for doc in self.documents if any(word in doc['text'].lower() for word in query.lower().split())]
+        results = [
+            doc for doc in self.documents
+            if any(word in doc['text'].lower()
+                   for word in query.lower().split())
+        ]
         if not results:
             results = self.documents[:1]
         context = '\n'.join([doc['text'] for doc in results])
