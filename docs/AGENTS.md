@@ -139,3 +139,17 @@ This document describes all agent types available in the Super Advanced Agent Fr
 - Subclass any agent and override methods for custom logic.
 - Add new metadata fields for richer filtering and retrieval.
 - Combine agent types for multi-modal, multi-user, or multi-task scenarios.
+
+## LarouineAgent
+- **Purpose:** Provides a comprehensive analysis of a project's codebase, including code quality, security, and performance, and generates a detailed improvement guide.
+- **Key Methods:**
+  - `analyze_repo(repo_url)`
+  - `generate_report(analysis_id)`
+  - `get_improvement_guide(analysis_id)`
+- **Usage:**
+  ```python
+  agent = LarouineAgent("Larouine", store, embedder, llm)
+  analysis_id = agent.analyze_repo("https://github.com/user/repo")
+  report = agent.generate_report(analysis_id)
+  guide = agent.get_improvement_guide(analysis_id)
+  ```

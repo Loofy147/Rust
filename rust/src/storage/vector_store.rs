@@ -1,6 +1,9 @@
 use async_trait::async_trait;
 use dashmap::DashMap;
+use lru::LruCache;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
@@ -19,6 +22,61 @@ pub trait VectorStore: Send + Sync {
     async fn find_similar_by_vector(&self, query_vector: &[f32], limit: usize) -> anyhow::Result<Vec<VectorSimilarity>>;
     async fn remove_document(&mut self, id: &str) -> anyhow::Result<bool>;
     async fn get_document_count(&self) -> usize;
+}
+
+pub struct CachedVectorStore<T: VectorStore> {
+    inner: T,
+    cache: Arc<RwLock<LruCache<String, Vec<VectorSimilarity>>>>,
+}
+
+impl<T: VectorStore> CachedVectorStore<T> {
+    pub fn new(inner: T, cache_size: usize) -> Self {
+        Self {
+            inner,
+            cache: Arc::new(RwLock::new(LruCache::new(
+                NonZeroUsize::new(cache_size).unwrap(),
+            ))),
+        }
+    }
+}
+
+#[async_trait]
+impl<T: VectorStore> VectorStore for CachedVectorStore<T> {
+    async fn add_document(&mut self, content: &str) -> anyhow::Result<String> {
+        self.inner.add_document(content).await
+    }
+
+    async fn add_vector(&mut self, id: &str, vector: Vec<f32>, content: &str) -> anyhow::Result<()> {
+        self.inner.add_vector(id, vector, content).await
+    }
+
+    async fn find_similar(&self, query: &str, limit: usize) -> anyhow::Result<Vec<VectorSimilarity>> {
+        let cache_key = format!("{}:{}", query, limit);
+        if let Some(cached) = self.cache.read().await.peek(&cache_key) {
+            return Ok(cached.clone());
+        }
+
+        let result = self.inner.find_similar(query, limit).await?;
+        self.cache.write().await.put(cache_key, result.clone());
+        Ok(result)
+    }
+
+    async fn find_similar_by_vector(
+        &self,
+        query_vector: &[f32],
+        limit: usize,
+    ) -> anyhow::Result<Vec<VectorSimilarity>> {
+        // Caching by vector is more complex, so we delegate to the inner store
+        self.inner.find_similar_by_vector(query_vector, limit).await
+    }
+
+    async fn remove_document(&mut self, id: &str) -> anyhow::Result<bool> {
+        self.inner.remove_document(id).await
+    }
+
+    async fn get_document_count(&self) -> usize {
+        self.inner.get_document_count().await
+    }
 }
 
 #[derive(Clone)]
