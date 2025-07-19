@@ -1,0 +1,40 @@
+# Configuration for the AI Agent Orchestration System
+
+# Global settings
+logging:
+  level: "INFO" # Can be DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "agent_system.log" # Optional: log to a file
+
+# Agent-specific configurations
+DataCreatorAgent:
+  clone_dir: "./temp_cloned_repos" # Centralized directory for clones
+  repo_processing:
+    include_patterns:
+      - '*.py'
+      - '*.md'
+      - '*.ipynb'
+      - '*.js'
+      - '*.ts'
+      - 'Dockerfile'
+      - '*.sh'
+    exclude_patterns:
+      - '.git/*'
+      - '.DS_Store'
+      - 'node_modules/*'
+      - '__pycache__/*'
+      - '*.log'
+      - 'dist/*'
+      - 'build/*'
+    # Process large repos in batches to avoid memory issues
+    batch_size: 100
+
+CodeAnalysisAgent: # Configuration for our next agent
+  code_extensions: ['.py', '.js', '.ts']
+  max_file_size_kb: 1024 # Don't analyze files larger than 1MB
+
+# Other services (placeholders for the future)
+VectorDatabase:
+  host: "localhost"
+  port: 19530
+  api_key: ${PINECONE_API_KEY} # Example of using environment variables

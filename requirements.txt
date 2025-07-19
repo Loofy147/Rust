@@ -1,5 +1,5 @@
 fastapi
-uvicorn
+uvicor<<<<<<< cursor/reasoning-agent-for-knowledge-graph-and-llm-interaction-bfb6
 pydantic
 openai
 tenacity
@@ -19,3 +19,19 @@ opentelemetry-exporter-otlp
 python-jose
 passlib[bcrypt]
 slowapi
+=======
+sqlalchemy
+alembic
+psycopg2-binary
+pydantic
+passlib[bcrypt]
+python-jose
+faiss-cpu
+transformers
+sentence-transformers
+celery
+redis
+pillow
+pytest
+python-dotenv
+>>>>>> main

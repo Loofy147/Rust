@@ -1,0 +1,22 @@
+
+class Agent:
+    def __init__(self, agent_id, capabilities):
+        self.agent_id = agent_id
+        self.capabilities = capabilities
+        self.inbox = []
+        self.outbox = []
+
+class DataPreprocessingAgent(Agent):
+    def __init__(self, agent_id):
+        super().__init__(agent_id, [AgentCapability.DATA_PREPROCESSING])
+        # ... logique spécifique
+
+class ModelConstructionAgent(Agent):
+    def __init__(self, agent_id):
+        super().__init__(agent_id, [AgentCapability.MODEL_CONSTRUCTION])
+        # ... logique spécifique
+
+class DeploymentAgent(Agent):
+    def __init__(self, agent_id):
+        super().__init__(agent_id, [AgentCapability.DEPLOYMENT])
+        # ... logique spécifique

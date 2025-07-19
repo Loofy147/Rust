@@ -1,0 +1,11 @@
+{
+    "type": "generate_code",
+    "task_description": "Create a new Python function to send a notification to a Microsoft Teams incoming webhook. It should follow the style and structure of the provided examples.",
+    "context_snippets": [
+        // Content of the Slack function from the VectorDB result
+        {"file_path": "knockknock/notifiers.py", "content": "def slack_sender(...): ..."},
+        // Content of the Telegram function from the VectorDB result
+        {"file_path": "knockknock/notifiers.py", "content": "def telegram_sender(...): ..."}
+    ],
+    "response_agent": "Orchestrator"
+}

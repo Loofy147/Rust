@@ -1,6 +1,4 @@
-# ReasoningAgent
-
-[![Test Coverage](https://img.shields.io/badge/coverage-unknown-lightgrey)](https://github.com/)
+rsor/reasoning-agent-for-knowledge-graph-and-llm-interaction-b# Reasoni[![Test Coverage](https://img.shields.io/badge/coverage-unknown-lightgrey)](https://github.com/)
 
 A modular, production-ready agent system with plugin interfaces for LLM, KG, vector store, and metrics. Includes REST API for task injection and status, robust error handling, and advanced developer experience features.
 
@@ -8,8 +6,7 @@ A modular, production-ready agent system with plugin interfaces for LLM, KG, vec
 
 ## Table of Contents
 - [Features](#features)
-- [Architecture](#architecture)
-- [Plugin System](#plugin-system)
+- [Architecture](#architectur- [Plugin System](#plugin-system)
 - [Setup](#setup)
 - [Development Workflow](#development-workflow)
 - [CLI Usage](#cli-usage)
@@ -17,10 +14,7 @@ A modular, production-ready agent system with plugin interfaces for LLM, KG, vec
 - [Testing & Coverage](#testing--coverage)
 - [Deployment](#deployment)
 - [Extending the System](#extending-the-system)
-- [Contributing](#contributing)
-
----
-
+- [Contributing](#contributingm
 ## Features
 - Pluggable LLM, KG, vector store, and metrics
 - REST API (FastAPI) for task management
@@ -38,8 +32,7 @@ A modular, production-ready agent system with plugin interfaces for LLM, KG, vec
 
 ## Architecture
 
-See [`docs/architecture.md`](docs/architecture.md) for a full diagram and explanation.
-
+See [`docs/architecture.md`](docs/architecture.md) for a full diagram and explanat
 **Summary:**
 - REST API receives tasks, handled by ReasoningAgent core
 - Plugins for LLM, KG, vector store, and metrics
@@ -148,6 +141,4 @@ python manage.py reload-plugins # Enable DEV_MODE for hot plugin reload (restart
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for guidelines on setup, testing, and pull requests.
 
 ---
-
-## License
-MIT License
+==>>>>>> main
