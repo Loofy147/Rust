@@ -1,0 +1,16 @@
+[
+  {
+    "id": "two_sum",
+    "title": "Two Sum",
+    "difficulty": "Easy",
+    "category": "Array",
+    "description": "Given an array of integers nums and an integer target, return indices of the two numbers such that they add up to target.",
+    "solution": "def two_sum_optimized(nums, target):\n    num_map = {}\n    for i, num in enumerate(nums):\n        complement = target - num\n        if complement in num_map:\n            return [num_map[complement], i]\n        num_map[num] = i\n    return []",
+    "topics": [
+      "Array",
+      "Hash Table"
+    ],
+    "source": "leetcode_style",
+    "collected_at": "2025-07-18T08:23:56.755098"
+  }
+]

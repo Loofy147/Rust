@@ -1,0 +1,29 @@
+workflow_id: data_preparation_workflow
+steps:
+  - id: ingest
+    agent: data_ingestion1
+    params:
+      source: "sample.csv"
+  - id: clean
+    agent: data_cleaning1
+    depends_on: [ingest]
+  - id: validate
+    agent: data_validation1
+    depends_on: [clean]
+  - id: annotate
+    agent: data_annotation1
+    depends_on: [validate]
+    hitl: true
+  - id: transform
+    agent: data_transformation1
+    depends_on: [annotate]
+  - id: label
+    agent: data_labeling1
+    depends_on: [transform]
+  - id: split
+    agent: data_split1
+    depends_on: [label]
+  - id: export
+    agent: data_export1
+    depends_on: [split]
+dag: true

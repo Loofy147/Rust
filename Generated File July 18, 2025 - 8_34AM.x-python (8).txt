@@ -1,0 +1,10 @@
+# agents/data_agents.py
+
+from .core_agents import Agent, AgentCapability
+
+class DataPreprocessingAgent(Agent):
+    def __init__(self, agent_id):
+        super().__init__(agent_id, [AgentCapability.DATA_PREPROCESSING])
+        # ... logique spécifique
+
+
