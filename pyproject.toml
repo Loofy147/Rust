@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "reasoning_agent"
+version = "0.1.0"
+description = "A modular, production-ready agent system."
+authors = ["Your Name <you@example.com>"]
+
+[tool.poetry.dependencies]
+python = ">=3.8"
+fastapi = "*"
+uvicorn = "*"
+pydantic = "*"
+openai = "*"
+tenacity = "*"
+sqlalchemy = "*"
+chromadb = "*"
+pytest = "*"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

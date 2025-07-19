@@ -1,0 +1,9 @@
+networkx
+spacy
+faiss-cpu
+sentence-transformers
+requests
+fastapi
+uvicorn
+beautifulsoup4
+openai
