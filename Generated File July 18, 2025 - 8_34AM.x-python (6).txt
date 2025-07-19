@@ -1,0 +1,51 @@
+# agents/core_agents.py
+
+import enum
+
+class AgentCapability(enum.Enum):
+    DATA_PREPROCESSING = 'data_preprocessing'
+    FEATURE_ENGINEERING = 'feature_engineering'
+    MODEL_CONSTRUCTION = 'model_construction'
+    TRAINING = 'training'
+    EVALUATION = 'evaluation'
+    COORDINATION = 'coordination'
+    SYSTEM_HEALTH = 'system_health'
+    DEPLOYMENT = 'deployment'
+    REPO_CLONE = 'repo_clone'
+    MICROSERVICES = 'microservices'
+    SECURITY_SCAN = 'security_scan'
+    TESTING = 'testing'
+    PERFORMANCE_MONITORING = 'performance_monitoring'
+
+class Agent:
+    def __init__(self, agent_id: str, capabilities: list[AgentCapability]):
+        self.agent_id = agent_id
+        self.capabilities = capabilities
+        self.inbox = []
+        self.outbox = []
+
+    def send_message(self, recipient_id: str, message: dict):
+        # Cette méthode simulerait l'envoi d'un message à un autre agent
+        pass
+
+    def receive_message(self):
+        # Cette méthode simulerait la réception d'un message
+        if self.inbox:
+            return self.inbox.pop(0)
+        return None
+
+    def process_message(self, message):
+        # Logique de traitement des messages
+        raise NotImplementedError
+
+    def execute_task(self, task_description: str):
+        # Logique d'exécution des tâches
+        raise NotImplementedError
+
+
+class DeploymentAgent(Agent):
+    def __init__(self, agent_id):
+        super().__init__(agent_id, [AgentCapability.DEPLOYMENT])
+        # ... logique spécifique
+
+

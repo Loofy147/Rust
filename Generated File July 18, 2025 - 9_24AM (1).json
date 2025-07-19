@@ -1,0 +1,22 @@
+[
+  {
+    "name": "Quick Sort",
+    "type": "Sorting",
+    "time_complexity": "O(n log n)",
+    "space_complexity": "O(log n)",
+    "description": "Divide-and-conquer sorting algorithm",
+    "implementation": "def quicksort(arr):\n    if len(arr) <= 1: return arr\n    pivot = arr[len(arr) // 2]\n    left = [x for x in arr if x < pivot]\n    middle = [x for x in arr if x == pivot]\n    right = [x for x in arr if x > pivot]\n    return quicksort(left) + middle + quicksort(right)",
+    "source": "algorithm_collection",
+    "collected_at": "2025-07-18T08:23:56.754263"
+  },
+  {
+    "name": "Binary Search",
+    "type": "Searching",
+    "time_complexity": "O(log n)",
+    "space_complexity": "O(1)",
+    "description": "Efficient search algorithm for sorted arrays",
+    "implementation": "def binary_search(arr, target):\n    left, right = 0, len(arr) - 1\n    while left <= right:\n        mid = (left + right) // 2\n        if arr[mid] == target: return mid\n        elif arr[mid] < target: left = mid + 1\n        else: right = mid - 1\n    return -1",
+    "source": "algorithm_collection",
+    "collected_at": "2025-07-18T08:23:56.754285"
+  }
+]
