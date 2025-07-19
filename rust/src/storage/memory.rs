@@ -4,7 +4,12 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::types::KnowledgeEntity;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KnowledgeEntity {
+    pub id: String,
+    pub entity_type: String,
+    pub properties: Vec<(String, String)>,
+}
 
 /// Trait for knowledge graph operations
 #[async_trait]
@@ -169,169 +174,5 @@ impl KnowledgeGraph for InMemoryKnowledgeGraph {
         }
 
         Ok(removed)
-    }
-}
-
-/// SQLite-based persistent knowledge graph
-#[cfg(feature = "sqlite")]
-pub struct SQLiteKnowledgeGraph {
-    pool: sqlx::SqlitePool,
-}
-
-#[cfg(feature = "sqlite")]
-impl SQLiteKnowledgeGraph {
-    pub async fn new(database_url: &str) -> anyhow::Result<Self> {
-        let pool = sqlx::SqlitePool::connect(database_url).await?;
-        
-        // Create tables if they don't exist
-        sqlx::query(r#"
-            CREATE TABLE IF NOT EXISTS entities (
-                id TEXT PRIMARY KEY,
-                entity_type TEXT NOT NULL,
-                properties TEXT NOT NULL
-            )
-        "#)
-        .execute(&pool)
-        .await?;
-
-        sqlx::query(r#"
-            CREATE TABLE IF NOT EXISTS relationships (
-                id TEXT PRIMARY KEY,
-                from_id TEXT NOT NULL,
-                to_id TEXT NOT NULL,
-                relationship_type TEXT NOT NULL,
-                properties TEXT NOT NULL,
-                FOREIGN KEY (from_id) REFERENCES entities (id),
-                FOREIGN KEY (to_id) REFERENCES entities (id)
-            )
-        "#)
-        .execute(&pool)
-        .await?;
-
-        Ok(Self { pool })
-    }
-}
-
-#[cfg(feature = "sqlite")]
-#[async_trait]
-impl KnowledgeGraph for SQLiteKnowledgeGraph {
-    async fn add_entity(&mut self, entity: KnowledgeEntity) -> anyhow::Result<()> {
-        let properties_json = serde_json::to_string(&entity.properties)?;
-        
-        sqlx::query(r#"
-            INSERT OR REPLACE INTO entities (id, entity_type, properties)
-            VALUES (?, ?, ?)
-        "#)
-        .bind(&entity.id)
-        .bind(&entity.entity_type)
-        .bind(&properties_json)
-        .execute(&self.pool)
-        .await?;
-
-        Ok(())
-    }
-
-    async fn get_entity(&self, id: &str) -> anyhow::Result<Option<KnowledgeEntity>> {
-        let row = sqlx::query(r#"
-            SELECT id, entity_type, properties FROM entities WHERE id = ?
-        "#)
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await?;
-
-        if let Some(row) = row {
-            let properties: Vec<(String, String)> = serde_json::from_str(&row.get::<String, _>("properties"))?;
-            Ok(Some(KnowledgeEntity {
-                id: row.get("id"),
-                entity_type: row.get("entity_type"),
-                properties,
-            }))
-        } else {
-            Ok(None)
-        }
-    }
-
-    async fn query_entities(&self, query: &str) -> anyhow::Result<Vec<KnowledgeEntity>> {
-        let rows = sqlx::query(r#"
-            SELECT id, entity_type, properties FROM entities
-            WHERE entity_type LIKE ? OR properties LIKE ?
-            LIMIT 10
-        "#)
-        .bind(format!("%{}%", query))
-        .bind(format!("%{}%", query))
-        .fetch_all(&self.pool)
-        .await?;
-
-        let mut entities = Vec::new();
-        for row in rows {
-            let properties: Vec<(String, String)> = serde_json::from_str(&row.get::<String, _>("properties"))?;
-            entities.push(KnowledgeEntity {
-                id: row.get("id"),
-                entity_type: row.get("entity_type"),
-                properties,
-            });
-        }
-
-        Ok(entities)
-    }
-
-    async fn add_relationship(&mut self, from_id: &str, to_id: &str, relationship_type: &str) -> anyhow::Result<()> {
-        let relationship_id = Uuid::new_v4().to_string();
-        let properties_json = serde_json::to_string(&Vec::<(String, String)>::new())?;
-        
-        sqlx::query(r#"
-            INSERT INTO relationships (id, from_id, to_id, relationship_type, properties)
-            VALUES (?, ?, ?, ?, ?)
-        "#)
-        .bind(&relationship_id)
-        .bind(from_id)
-        .bind(to_id)
-        .bind(relationship_type)
-        .bind(&properties_json)
-        .execute(&self.pool)
-        .await?;
-
-        Ok(())
-    }
-
-    async fn get_relationships(&self, entity_id: &str) -> anyhow::Result<Vec<Relationship>> {
-        let rows = sqlx::query(r#"
-            SELECT id, from_id, to_id, relationship_type, properties FROM relationships
-            WHERE from_id = ? OR to_id = ?
-        "#)
-        .bind(entity_id)
-        .bind(entity_id)
-        .fetch_all(&self.pool)
-        .await?;
-
-        let mut relationships = Vec::new();
-        for row in rows {
-            let properties: Vec<(String, String)> = serde_json::from_str(&row.get::<String, _>("properties"))?;
-            relationships.push(Relationship {
-                id: row.get("id"),
-                from_id: row.get("from_id"),
-                to_id: row.get("to_id"),
-                relationship_type: row.get("relationship_type"),
-                properties,
-            });
-        }
-
-        Ok(relationships)
-    }
-
-    async fn remove_entity(&mut self, id: &str) -> anyhow::Result<bool> {
-        let result = sqlx::query(r#"DELETE FROM entities WHERE id = ?"#)
-            .bind(id)
-            .execute(&self.pool)
-            .await?;
-
-        // Also remove relationships
-        sqlx::query(r#"DELETE FROM relationships WHERE from_id = ? OR to_id = ?"#)
-            .bind(id)
-            .bind(id)
-            .execute(&self.pool)
-            .await?;
-
-        Ok(result.rows_affected() > 0)
     }
 }

@@ -2,9 +2,13 @@ use async_trait::async_trait;
 use dashmap::DashMap;
 use std::sync::Arc;
 use uuid::Uuid;
-use std::collections::HashMap;
 
-use crate::types::VectorSimilarity;
+#[derive(Debug, Clone)]
+pub struct VectorSimilarity {
+    pub id: String,
+    pub content: String,
+    pub similarity_score: f32,
+}
 
 /// Trait for vector store operations
 #[async_trait]
@@ -97,7 +101,7 @@ impl InMemoryVectorStore {
     }
 
     fn simple_hash(&self, s: &str) -> usize {
-        s.chars().fold(0, |acc, c| acc.wrapping_mul(31).wrapping_add(c as usize))
+        s.chars().fold(0, |acc: usize, c| acc.wrapping_mul(31).wrapping_add(c as usize))
     }
 
     fn cosine_similarity(&self, a: &[f32], b: &[f32]) -> f32 {
@@ -175,170 +179,5 @@ impl VectorStore for InMemoryVectorStore {
 
     async fn get_document_count(&self) -> usize {
         self.documents.len()
-    }
-}
-
-/// SQLite-based persistent vector store
-#[cfg(feature = "sqlite")]
-pub struct SQLiteVectorStore {
-    pool: sqlx::SqlitePool,
-    dimension: usize,
-}
-
-#[cfg(feature = "sqlite")]
-impl SQLiteVectorStore {
-    pub async fn new(database_url: &str, dimension: usize) -> anyhow::Result<Self> {
-        let pool = sqlx::SqlitePool::connect(database_url).await?;
-        
-        // Create table if it doesn't exist
-        sqlx::query(r#"
-            CREATE TABLE IF NOT EXISTS vectors (
-                id TEXT PRIMARY KEY,
-                content TEXT NOT NULL,
-                vector BLOB NOT NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        "#)
-        .execute(&pool)
-        .await?;
-
-        // Create index for faster similarity searches (if supported)
-        let _ = sqlx::query(r#"
-            CREATE INDEX IF NOT EXISTS idx_vectors_content ON vectors(content)
-        "#)
-        .execute(&pool)
-        .await;
-
-        Ok(Self { pool, dimension })
-    }
-
-    fn vector_to_bytes(&self, vector: &[f32]) -> Vec<u8> {
-        vector.iter().flat_map(|&f| f.to_le_bytes().to_vec()).collect()
-    }
-
-    fn bytes_to_vector(&self, bytes: &[u8]) -> Vec<f32> {
-        bytes
-            .chunks_exact(4)
-            .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
-            .collect()
-    }
-
-    fn cosine_similarity(&self, a: &[f32], b: &[f32]) -> f32 {
-        if a.len() != b.len() {
-            return 0.0;
-        }
-
-        let dot_product: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
-        let magnitude_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
-        let magnitude_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
-
-        if magnitude_a == 0.0 || magnitude_b == 0.0 {
-            0.0
-        } else {
-            dot_product / (magnitude_a * magnitude_b)
-        }
-    }
-
-    fn text_to_vector(&self, text: &str) -> Vec<f32> {
-        // Simple implementation - in production use proper embeddings
-        let mut vector = vec![0.0; self.dimension];
-        let words: Vec<&str> = text.to_lowercase().split_whitespace().collect();
-        
-        for (i, word) in words.iter().enumerate() {
-            let hash = word.chars().fold(0, |acc, c| acc.wrapping_mul(31).wrapping_add(c as usize)) % self.dimension;
-            vector[hash] += 1.0 / (i + 1) as f32;
-        }
-        
-        // Normalize
-        let magnitude: f32 = vector.iter().map(|x| x * x).sum::<f32>().sqrt();
-        if magnitude > 0.0 {
-            for val in &mut vector {
-                *val /= magnitude;
-            }
-        }
-        
-        vector
-    }
-}
-
-#[cfg(feature = "sqlite")]
-#[async_trait]
-impl VectorStore for SQLiteVectorStore {
-    async fn add_document(&mut self, content: &str) -> anyhow::Result<String> {
-        let id = Uuid::new_v4().to_string();
-        let vector = self.text_to_vector(content);
-        self.add_vector(&id, vector, content).await?;
-        Ok(id)
-    }
-
-    async fn add_vector(&mut self, id: &str, vector: Vec<f32>, content: &str) -> anyhow::Result<()> {
-        if vector.len() != self.dimension {
-            return Err(anyhow::anyhow!(
-                "Vector dimension {} does not match expected dimension {}",
-                vector.len(),
-                self.dimension
-            ));
-        }
-
-        let vector_bytes = self.vector_to_bytes(&vector);
-        
-        sqlx::query(r#"
-            INSERT OR REPLACE INTO vectors (id, content, vector)
-            VALUES (?, ?, ?)
-        "#)
-        .bind(id)
-        .bind(content)
-        .bind(&vector_bytes)
-        .execute(&self.pool)
-        .await?;
-
-        Ok(())
-    }
-
-    async fn find_similar(&self, query: &str, limit: usize) -> anyhow::Result<Vec<VectorSimilarity>> {
-        let query_vector = self.text_to_vector(query);
-        self.find_similar_by_vector(&query_vector, limit).await
-    }
-
-    async fn find_similar_by_vector(&self, query_vector: &[f32], limit: usize) -> anyhow::Result<Vec<VectorSimilarity>> {
-        let rows = sqlx::query(r#"SELECT id, content, vector FROM vectors"#)
-            .fetch_all(&self.pool)
-            .await?;
-
-        let mut similarities: Vec<VectorSimilarity> = Vec::new();
-
-        for row in rows {
-            let vector_bytes: Vec<u8> = row.get("vector");
-            let vector = self.bytes_to_vector(&vector_bytes);
-            let similarity = self.cosine_similarity(query_vector, &vector);
-            
-            similarities.push(VectorSimilarity {
-                id: row.get("id"),
-                content: row.get("content"),
-                similarity_score: similarity,
-            });
-        }
-
-        // Sort by similarity score (highest first)
-        similarities.sort_by(|a, b| b.similarity_score.partial_cmp(&a.similarity_score).unwrap());
-        similarities.truncate(limit);
-
-        Ok(similarities)
-    }
-
-    async fn remove_document(&mut self, id: &str) -> anyhow::Result<bool> {
-        let result = sqlx::query(r#"DELETE FROM vectors WHERE id = ?"#)
-            .bind(id)
-            .execute(&self.pool)
-            .await?;
-
-        Ok(result.rows_affected() > 0)
-    }
-
-    async fn get_document_count(&self) -> usize {
-        sqlx::query_scalar(r#"SELECT COUNT(*) FROM vectors"#)
-            .fetch_one(&self.pool)
-            .await
-            .unwrap_or(0)
     }
 }
