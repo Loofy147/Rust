@@ -1,5 +1,25 @@
 fastapi
-uvicorn
+uvicor<<<<<<< cursor/reasoning-agent-for-knowledge-graph-and-llm-interaction-bfb6
+pydantic
+openai
+tenacity
+sqlalchemy
+chromadb
+pytest
+prometheus_fastapi_instrumentator
+loguru
+celery
+redis
+opentelemetry-api
+opentelemetry-sdk
+opentelemetry-instrumentation
+opentelemetry-instrumentation-fastapi
+opentelemetry-instrumentation-celery
+opentelemetry-exporter-otlp
+python-jose
+passlib[bcrypt]
+slowapi
+=======
 sqlalchemy
 alembic
 psycopg2-binary
@@ -14,3 +34,4 @@ redis
 pillow
 pytest
 python-dotenv
+>>>>>> main
