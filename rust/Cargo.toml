@@ -35,6 +35,7 @@ thiserror = "1.0"
 # Logging and tracing
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-opentelemetry = { version = "0.21", optional = true }
 
 # Configuration
 config = { version = "0.13", optional = true }
@@ -55,10 +56,19 @@ reqwest = { version = "0.11", features = ["json"], optional = true }
 
 # Concurrent data structures
 dashmap = "5.5"
+lru = { version = "0.12", optional = true }
 
 # Metrics
 metrics = { version = "0.21", optional = true }
 uuid = { version = "1.8", features = ["v4"] }
+
+# Security
+secrecy = { version = "0.8", features = ["serde"], optional = true }
+validator = { version = "0.16", features = ["derive"], optional = true }
+regex = { version = "1.10", optional = true }
+
+# Dynamic loading
+libloading = { version = "0.8", optional = true }
 
 [features]
 default = ["cli"]
@@ -67,14 +77,21 @@ api = ["axum", "tower", "tower-http"]
 database = ["sqlx", "sqlite"]
 llm-apis = ["reqwest"]
 metrics = ["dep:metrics", "prometheus"]
-full = ["cli", "api", "database", "llm-apis", "metrics"]
+full = ["cli", "api", "database", "llm-apis", "metrics", "lru", "secrecy", "validator", "regex", "libloading"]
 sqlite = []
 prometheus = []
+lru = ["dep:lru"]
+secrecy = ["dep:secrecy"]
+validator = ["dep:validator"]
+regex = ["dep:regex"]
+libloading = ["dep:libloading"]
 
 [dev-dependencies]
 tokio-test = "0.4"
 tempfile = "3.0"
 wiremock = "0.5"
+proptest = "1.4"
+testcontainers = "0.15"
 
 [profile.release]
 lto = true

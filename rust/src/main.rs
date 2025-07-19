@@ -14,11 +14,12 @@ use reasoning_agent::{
 
 use reasoning_agent::cli::commands::{Cli, Commands};
 
-use tracing_subscriber::fmt;
+use tracing_subscriber::{fmt, EnvFilter};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    fmt::init();
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    fmt().with_env_filter(filter).init();
 
     let cli = Cli::parse();
 
@@ -43,7 +44,7 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn create_agent() -> anyhow::Result<ReasoningAgent> {
-    let _config = AgentConfig::from_env()?;
+    let config = AgentConfig::from_env()?;
     let knowledge_graph = InMemoryKnowledgeGraph::new();
     let vector_store = InMemoryVectorStore::new();
     let metrics = MetricsCollector::new();
@@ -56,6 +57,7 @@ async fn create_agent() -> anyhow::Result<ReasoningAgent> {
         llm_plugin,
         prompt_builder,
         metrics,
-    )?
-)
+        config.performance.max_concurrent_tasks,
+        config.performance.task_timeout_seconds,
+    )?)
 }
