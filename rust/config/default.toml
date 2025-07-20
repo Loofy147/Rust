@@ -1,0 +1,5 @@
+[performance]
+max_concurrent_tasks = 10
+task_timeout_seconds = 30
+cache_size = 100
+batch_size = 10

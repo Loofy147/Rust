@@ -1,36 +1,24 @@
-import unittest
-import yaml
-from plugins.plugin_manager import PluginManager
-from plugins.dynamic_loader import DynamicPluginLoader
+from agent.plugins.llm_openai import OpenAILLM
+from agent.plugins.kg_sqlalchemy import SQLAlchemyKG
+from agent.plugins.vector_chroma import ChromaVectorStore
+from agent.metrics import PrintMetrics
+import os
 
-class TestPlugins(unittest.TestCase):
-    def setUp(self):
-        with open('config.yaml') as f:
-            self.config = yaml.safe_load(f)
-        self.dynamic_loader = DynamicPluginLoader()
-        self.plugin_manager = PluginManager(self.config, self.dynamic_loader)
+def test_llm_plugin():
+    plugin = OpenAILLM(api_key="sk-test")
+    assert hasattr(plugin, "call")
 
-    def test_sentiment_analyzer_plugin(self):
-        sentiment = self.plugin_manager.run('sentiment_analyzer', 'I love this!')
-        self.assertIsNotNone(sentiment)
-        self.assertGreater(sentiment.polarity, 0)
+def test_kg_plugin(tmp_path):
+    db_url = f"sqlite:///{tmp_path}/test.db"
+    kg = SQLAlchemyKG(db_url)
+    assert hasattr(kg, "query")
+    assert hasattr(kg, "store")
 
-    def test_dynamic_plugin_loading(self):
-        # The sentiment_analyzer is loaded by default, let's run it
-        sentiment = self.plugin_manager.run('sentiment_analyzer', 'I love this!')
-        self.assertIsNotNone(sentiment)
-        self.assertGreater(sentiment.polarity, 0)
+def test_vector_plugin():
+    vector_store = ChromaVectorStore()
+    assert hasattr(vector_store, "add")
+    assert hasattr(vector_store, "query")
 
-        # Unload the sentiment analyzer plugin
-        self.plugin_manager.unload_plugin('sentiment_analyzer')
-        sentiment = self.plugin_manager.run('sentiment_analyzer', 'I love this!')
-        self.assertIsNone(sentiment)
-
-        # Load the sentiment analyzer plugin dynamically
-        self.plugin_manager.load_plugin('plugins.sentiment_analyzer_plugin', 'SentimentAnalyzerPlugin')
-        sentiment = self.plugin_manager.run('SentimentAnalyzerPlugin', 'I love this!')
-        self.assertIsNotNone(sentiment)
-        self.assertGreater(sentiment.polarity, 0)
-
-if __name__ == '__main__':
-    unittest.main()
+def test_metrics_plugin():
+    metrics = PrintMetrics()
+    metrics.emit("test_metric", 1)

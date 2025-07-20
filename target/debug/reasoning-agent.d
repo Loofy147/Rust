@@ -1,0 +1,1 @@
+/workspace/target/debug/reasoning-agent: /workspace/src/knowledge_graph.rs /workspace/src/lib.rs /workspace/src/main.rs /workspace/src/metrics.rs /workspace/src/plugins.rs /workspace/src/types.rs /workspace/src/vector_store.rs
