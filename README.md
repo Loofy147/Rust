@@ -1,3 +1,5 @@
+<<<<< fix/merge-conflicts
+=======
 <<<< cursor/reasoning-agent-for-knowledge-graph-and-llm-interaction-543a
 # ReasoningAgent - Knowledge Graph & LLM Integration System
 
@@ -458,3 +460,4 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) for guidelines on setup, testing, and p
 ---
 ==>>>> main
 >>>>> main
+>>>> main

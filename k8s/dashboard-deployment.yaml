@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dashboard
+  template:
+    metadata:
+      labels:
+        app: dashboard
+    spec:
+      containers:
+      - name: dashboard
+        image: yourrepo/yourimage:latest  # Replace with your built image
+        env:
+        - name: DATABASE_URL
+          value: postgresql://postgres:postgres@postgres:5432/agentsys
+        - name: API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: api-secrets
+              key: API_KEY
+        ports:
+        - containerPort: 8501
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dashboard
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8501
+  selector:
+    app: dashboard

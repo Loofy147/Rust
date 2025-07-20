@@ -1,0 +1,46 @@
+runtime:
+  heartbeat_interval: 10  # seconds
+  log_level: INFO
+  autosave_interval: 60  # seconds
+
+llm:
+  provider: openai  # or huggingface
+  api_key: "YOUR_API_KEY_HERE"
+  model: "gpt-3.5-turbo"
+  endpoint: ""
+
+storage:
+  type: vector_db
+  dim: 384
+
+plugins:
+  enabled:
+    - tokenizer
+    - normalizer
+    - sentiment_analyzer
+
+  tokenizer:
+    module: plugins.tokenizer_plugin
+    class: TokenizerPlugin
+    config: {}
+
+  normalizer:
+    module: plugins.normalizer_plugin
+    class: NormalizerPlugin
+    config: {}
+
+  vectorizer:
+    module: plugins.vectorizer_plugin
+    class: VectorizerPlugin
+    config:
+      model: all-MiniLM-L6-v2
+
+  sentiment_analyzer:
+    module: plugins.sentiment_analyzer_plugin
+    class: SentimentAnalyzerPlugin
+    config: {}
+
+api:
+  host: 0.0.0.0
+  port: 8000
+  auth_token: "changeme"

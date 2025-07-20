@@ -1,0 +1,6 @@
+DATABASE_URL=postgresql://postgres:postgres@db:5432/agentsys
+API_KEY=changeme
+HUGGINGFACE_API_KEY=your_hf_token
+PINECONE_API_KEY=your_pinecone_key
+PINECONE_ENV=us-west1-gcp
+PINECONE_INDEX=agentsys-index

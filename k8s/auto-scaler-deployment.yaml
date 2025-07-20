@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auto-scaler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: auto-scaler
+  template:
+    metadata:
+      labels:
+        app: auto-scaler
+    spec:
+      containers:
+      - name: auto-scaler
+        image: yourrepo/yourimage:latest  # Replace with your built image
+        env:
+        - name: DATABASE_URL
+          value: postgresql://postgres:postgres@postgres:5432/agentsys
+        - name: API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: api-secrets
+              key: API_KEY
+        command: ["python", "auto_scaler.py"]
