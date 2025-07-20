@@ -1,0 +1,21 @@
+Démarrage de l'orchestration de la refactorisation...
+Création de la nouvelle structure de répertoires sous : ./agents
+Fichier écrit : ./agents/data_agents.py
+Fichier écrit : ./agents/model_agents.py
+Fichier écrit : ./agents/core_agents.py
+Fichier écrit : ./agents/__init__.py
+Structure de répertoires créée avec succès.
+Extraction et déplacement des classes d'agents...
+Fichier écrit : ./agents/data_agents.py
+Fichier écrit : ./agents/model_agents.py
+Fichier écrit : ./agents/core_agents.py
+Fichier écrit : ./agents/__init__.py
+Classes d'agents trouvées et déplacées : DataPreprocessingAgent, ModelConstructionAgent, DeploymentAgent
+Extraction et déplacement terminés.
+Mise à jour des importations dans knowledge_graph.py...
+Fichier écrit : ./knowledge_graph.py
+Importations de knowledge_graph.py mises à jour.
+Nettoyage des anciens fichiers...
+Fichier supprimé : ./collaborative_ai_system (1).py
+Nettoyage terminé.
+Orchestration de la refactorisation terminée avec succès !

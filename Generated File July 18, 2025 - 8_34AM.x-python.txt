@@ -1,0 +1,10 @@
+
+def db_connect():
+    return "Dummy DB Connection"
+
+class Neo4jConnection:
+    def __init__(self, uri, user, password):
+        self.uri = uri
+        self.user = user
+        self.password = password
+        print("Neo4jConnection initialized")
