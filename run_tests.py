@@ -2,7 +2,7 @@ import sys
 import unittest
 
 # Add the project root to the Python path
-sys.path.insert(0, '.')
+sys.path.insert(0, '/app/multi_agent_framework')
 
 # Discover and run the tests
 suite = unittest.defaultTestLoader.discover('/app/multi_agent_framework/tests')

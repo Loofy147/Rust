@@ -7,3 +7,6 @@ fastapi
 uvicorn
 beautifulsoup4
 openai
+prometheus_client
+opentelemetry-api
+opentelemetry-sdk
