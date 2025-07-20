@@ -1,8 +1,8 @@
-from multi_agent_framework.agents.base import BaseAgent
+from multi_agent_framework.agents.base import Agent
 
-class RetrieverAgent(BaseAgent):
-    def __init__(self, agent_id, registry):
-        super().__init__(agent_id, registry)
+class RetrieverAgent(Agent):
+    def __init__(self, agent_id, registry, outboxes=None, config=None):
+        super().__init__(agent_id, registry, outboxes, config)
         self.skills = ['retrieval']
         # In production, connect to FAISS/Elastic/Pinecone
         self.documents = [

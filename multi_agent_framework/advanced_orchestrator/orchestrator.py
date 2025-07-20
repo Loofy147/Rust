@@ -24,6 +24,7 @@ class AdvancedOrchestrator:
         app.REGISTRY = self.registry
         app.WORKFLOW_ENGINE = self.workflow_engine
         app.EVENT_BUS = self.event_bus
+        app.ORCHESTRATOR = self
         # Plugin loader
         config_path = os.path.join(os.path.dirname(__file__),
                                    '../config/config.yaml')
@@ -151,7 +152,6 @@ class AdvancedOrchestrator:
             return error_info
 
     def run(self):
-        self.start_api()
         threading.Thread(target=self.monitor_agents, daemon=True).start()
         # Main event loop for orchestrator
         while True:
@@ -160,4 +160,5 @@ class AdvancedOrchestrator:
 
 if __name__ == "__main__":
     orchestrator = AdvancedOrchestrator()
+    orchestrator.start_api()
     orchestrator.run()

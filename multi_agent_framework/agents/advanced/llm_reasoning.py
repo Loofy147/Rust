@@ -1,9 +1,9 @@
-from agents.base import BaseAgent
+from agents.base import Agent
 import os
 
-class LLMReasoningAgent(BaseAgent):
-    def __init__(self, agent_id, registry, model='gpt-3.5-turbo'):
-        super().__init__(agent_id, registry)
+class LLMReasoningAgent(Agent):
+    def __init__(self, agent_id, registry, model='gpt-3.5-turbo', outboxes=None, config=None):
+        super().__init__(agent_id, registry, outboxes, config)
         self.skills = ['llm_reasoning']
         self.model = model
         self.api_key = os.environ.get('OPENAI_API_KEY')

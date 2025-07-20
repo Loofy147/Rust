@@ -1,0 +1,8 @@
+workflow_id: advanced_demo_workflow
+steps:
+  - id: monitor
+    agent: monitoring_agent
+  - id: optimize
+    agent: self_optimization_rl_agent
+    depends_on: [monitor]
+dag: true

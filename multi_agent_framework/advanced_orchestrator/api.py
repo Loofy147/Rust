@@ -3,7 +3,6 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import asyncio
 import os
-from advanced_orchestrator.orchestrator import orchestrator
 import traceback
 from advanced_orchestrator.monitoring import api_request_counter, api_error_counter, tracer
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
@@ -62,6 +61,7 @@ app.add_middleware(
 REGISTRY = None
 WORKFLOW_ENGINE = None
 EVENT_BUS = None
+ORCHESTRATOR = None
 
 # Store review queue in memory for demo
 REVIEW_QUEUE = []
@@ -227,18 +227,18 @@ async def review_annotation(request: Request):
 @app.get("/hitl_queue")
 async def hitl_queue():
     # Return pending HITL QA tasks
-    return orchestrator.human_in_the_loop_queue
+    return ORCHESTRATOR.human_in_the_loop_queue
 
 @app.post("/hitl_qa")
 async def hitl_qa(request: Request):
     data = await request.json()
     # Find and remove the task from the queue
-    for i, task in enumerate(orchestrator.human_in_the_loop_queue):
+    for i, task in enumerate(ORCHESTRATOR.human_in_the_loop_queue):
         if task.get('workflow_id') == data.get('workflow_id') and task.get('step') == data.get('step'):
-            orchestrator.human_in_the_loop_queue.pop(i)
+            ORCHESTRATOR.human_in_the_loop_queue.pop(i)
             break
     # Log feedback/action
-    orchestrator.workflow_engine.log_feedback(data['workflow_id'], data['step'], {
+    ORCHESTRATOR.workflow_engine.log_feedback(data['workflow_id'], data['step'], {
         'action': data.get('action'),
         'edited_answer': data.get('edited_answer'),
         'feedback': data.get('feedback'),
@@ -249,14 +249,14 @@ async def hitl_qa(request: Request):
 
 @app.get("/workflow_history/{workflow_id}")
 async def workflow_history(workflow_id: str, user=Depends(require_role("reviewer"))):
-    history = orchestrator.workflow_engine.get_run_history(workflow_id)
-    feedback = orchestrator.workflow_engine.get_feedback_log(workflow_id)
+    history = ORCHESTRATOR.workflow_engine.get_run_history(workflow_id)
+    feedback = ORCHESTRATOR.workflow_engine.get_feedback_log(workflow_id)
     return {"history": history, "feedback": feedback}
 
 @app.get("/agent_logs/{agent_id}")
 async def agent_logs(agent_id: str, user=Depends(require_role("reviewer"))):
     # For demo: return recent logs from agent (if available)
-    agent = orchestrator.registry.get(agent_id)
+    agent = ORCHESTRATOR.registry.get(agent_id)
     if agent and hasattr(agent['info'], 'instance'):
         # Assume agent instance has a logs attribute or method
         logs = getattr(agent['info']['instance'], 'logs', [])
@@ -267,8 +267,8 @@ async def agent_logs(agent_id: str, user=Depends(require_role("reviewer"))):
 async def user_analytics(user=Depends(require_role("reviewer"))):
     # For demo: count actions in feedback logs by user
     user_counts = {}
-    for wf_id in orchestrator.workflow_engine._feedback_log:
-        for entry in orchestrator.workflow_engine._feedback_log[wf_id]:
+    for wf_id in ORCHESTRATOR.workflow_engine._feedback_log:
+        for entry in ORCHESTRATOR.workflow_engine._feedback_log[wf_id]:
             u = entry.get('feedback', {}).get('user') or entry.get('user')
             if u:
                 user_counts[u] = user_counts.get(u, 0) + 1
