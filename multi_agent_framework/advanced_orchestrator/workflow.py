@@ -66,6 +66,13 @@ class WorkflowEngine:
                 n for n in ready
                 if self._check_conditions(workflow, n, memory)
             ]
+
+            # Handle loops
+            for step_id in ready:
+                step = workflow.nodes[step_id]
+                if "loop" in step:
+                    return self._handle_loop(workflow_id, step, memory, completed_steps)
+
             return ready
         else:
             for step in workflow:
@@ -76,7 +83,33 @@ class WorkflowEngine:
                         return []
                     if not self._check_conditions(workflow, step, memory):
                         return []
+
+                    if "loop" in step:
+                        return self._handle_loop(workflow_id, step, memory, completed_steps)
+
                     return [step['id']]
+            return []
+
+    def _handle_loop(self, workflow_id, step, memory, completed_steps):
+        loop_condition = step["loop"]["condition"]
+        loop_steps = step["loop"]["steps"]
+        loop_step_ids = [s["id"] for s in loop_steps]
+
+        if self._evaluate_condition(loop_condition, memory):
+            # Find the next step in the loop that is not completed
+            for loop_step in loop_steps:
+                if loop_step["id"] not in completed_steps:
+                    return [loop_step["id"]]
+
+            # If all loop steps are completed, re-evaluate the loop condition
+            # To re-start the loop, we need to clear the completed steps of the loop
+            # This is a simplification. A more robust implementation would handle this differently.
+            for step_id in loop_step_ids:
+                if step_id in self._run_status[workflow_id]:
+                    del self._run_status[workflow_id][step_id]
+            return [loop_steps[0]]
+        else:
+            # If the loop condition is not met, the loop is finished.
             return []
 
     def approve_hitl_step(self, workflow_id, step_id):
@@ -98,6 +131,22 @@ class WorkflowEngine:
                 'output': output,
                 'timestamp': time.time()
             })
+
+            if status == 'failure':
+                self._handle_failure(workflow_id, step_id)
+
+    def _handle_failure(self, workflow_id, step_id):
+        workflow = self.get_workflow(workflow_id)
+        step = workflow.nodes[step_id]
+
+        retries = step.get('retries', 0)
+        if retries > 0:
+            self.retry_step(workflow_id, step_id)
+            step['retries'] -= 1
+        elif 'on_failure' in step:
+            # This is a simplification. A more robust implementation would
+            # dynamically add the on_failure step to the workflow.
+            pass
 
     def get_memory(self, workflow_id):
         with self._lock:
@@ -147,11 +196,33 @@ class WorkflowEngine:
             cond = step.get('condition')
         if not cond:
             return True
-        # Example: condition = {'step': 'prev', 'equals': 'success'}
-        if memory and cond:
-            prev = memory.get(cond['step'])
-            return prev == cond['equals']
+
+        if memory:
+            return self._evaluate_condition(cond, memory)
+
         return True
+
+    def _evaluate_condition(self, condition, memory):
+        if "and" in condition:
+            return all(self._evaluate_condition(c, memory) for c in condition["and"])
+        if "or" in condition:
+            return any(self._evaluate_condition(c, memory) for c in condition["or"])
+        if "not" in condition:
+            return not self._evaluate_condition(condition["not"], memory)
+
+        step_id = condition.get("step")
+        value = memory.get(step_id)
+
+        if "equals" in condition:
+            return value == condition["equals"]
+        if "not_equals" in condition:
+            return value != condition["not_equals"]
+        if "greater_than" in condition:
+            return value > condition["greater_than"]
+        if "less_than" in condition:
+            return value < condition["less_than"]
+
+        return False
 
     def _update_read_model(self, workflow_id):
         self._read_model[workflow_id] = self._workflows[workflow_id]
