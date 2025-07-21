@@ -27,3 +27,4 @@ sentence-transformers
 pillow
 python-dotenv
 beautifulsoup4
+pika
