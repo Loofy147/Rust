@@ -11,7 +11,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 from kg_engine_async import AsyncKnowledgeGraphEngine, EntityType, RelationshipType, Entity, Relationship
-from kg_api.auth import get_current_user, authenticate_user, create_access_token
+from api.auth import get_current_user, authenticate_user, create_access_token
 
 app = FastAPI()
 limiter = Limiter(key_func=get_remote_address)
@@ -26,6 +26,9 @@ class EntityIn(BaseModel):
     name: str
     properties: Dict[str, Any] = {}
 
+    class Config:
+        arbitrary_types_allowed = True
+
 class RelationshipIn(BaseModel):
     source_id: str
     target_id: str
@@ -33,6 +36,9 @@ class RelationshipIn(BaseModel):
     weight: float = 1.0
     confidence: float = 0.8
     context: Dict[str, Any] = {}
+
+    class Config:
+        arbitrary_types_allowed = True
 
 @app.post('/token')
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
@@ -44,14 +50,14 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 
 @app.post('/entities')
 @limiter.limit("10/minute")
-async def add_entity(entity: EntityIn, user=Depends(get_current_user)):
+async def add_entity(request: Request, entity: EntityIn, user=Depends(get_current_user)):
     ent = Entity(id='', type=entity.type, name=entity.name, properties=entity.properties)
     eid = await kg.add_entity(ent)
     return {"id": eid}
 
 @app.get('/entities/{entity_id}')
 @limiter.limit("30/minute")
-async def get_entity(entity_id: str, user=Depends(get_current_user)):
+async def get_entity(request: Request, entity_id: str, user=Depends(get_current_user)):
     ent = await kg.get_entity(entity_id)
     if not ent:
         raise HTTPException(404, "Entity not found")
@@ -59,14 +65,14 @@ async def get_entity(entity_id: str, user=Depends(get_current_user)):
 
 @app.post('/relationships')
 @limiter.limit("10/minute")
-async def add_relationship(rel: RelationshipIn, user=Depends(get_current_user)):
+async def add_relationship(request: Request, rel: RelationshipIn, user=Depends(get_current_user)):
     relationship = Relationship(id='', **rel.dict())
     rid = await kg.add_relationship(relationship)
     return {"id": rid}
 
 @app.get('/relationships/{rel_id}')
 @limiter.limit("30/minute")
-async def get_relationship(rel_id: str, user=Depends(get_current_user)):
+async def get_relationship(request: Request, rel_id: str, user=Depends(get_current_user)):
     rel = await kg.get_relationship(rel_id)
     if not rel:
         raise HTTPException(404, "Relationship not found")
@@ -74,13 +80,14 @@ async def get_relationship(rel_id: str, user=Depends(get_current_user)):
 
 @app.get('/entities')
 @limiter.limit("30/minute")
-async def query_entities(type: Optional[EntityType] = None, name: Optional[str] = None, user=Depends(get_current_user)):
-    results = await kg.query_entities(entity_type=type, name_pattern=name)
+async def query_entities(request: Request, type: Optional[str] = None, name: Optional[str] = None, user=Depends(get_current_user)):
+    entity_type = EntityType(type) if type else None
+    results = await kg.query_entities(entity_type=entity_type, name_pattern=name)
     return results
 
 @app.get('/reasoning')
 @limiter.limit("10/minute")
-async def reasoning(query: str, user=Depends(get_current_user)):
+async def reasoning(request: Request, query: str, user=Depends(get_current_user)):
     # Example: pass query to engine's reasoning method
     result = await kg.execute_reasoning(query)
     return result

@@ -1,8 +1,8 @@
 import unittest
 from advanced_orchestrator.registry import AgentRegistry
 from advanced_orchestrator.workflow import WorkflowEngine
-from agents.advanced.planner import PlannerAgent
-from agents.advanced.retriever import RetrieverAgent
+from multi_agent_framework.agents.advanced.planner import PlannerAgent
+from multi_agent_framework.agents.advanced.retriever import RetrieverAgent
 
 class TestIntegration(unittest.TestCase):
     def setUp(self):

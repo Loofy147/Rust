@@ -5,11 +5,19 @@ from typing import Dict, Any, Optional, List, Set, Callable
 from datetime import datetime
 from collections import defaultdict
 from dataclasses import asdict
-from . import Entity, Relationship, EntityType, RelationshipType
 import json
 import importlib.util
 import os
 from abc import ABC, abstractmethod
+
+class Entity:
+    pass
+class Relationship:
+    pass
+class EntityType:
+    pass
+class RelationshipType:
+    pass
 
 class ReasoningRule(ABC):
     name: str

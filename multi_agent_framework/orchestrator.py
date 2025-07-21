@@ -1,15 +1,15 @@
 import queue
 import logging
-from agents.ingestion import IngestionAgent
-from agents.processing import ProcessingAgent
-from agents.distribution import DistributionAgent
-from agents.manager import ManagerAgent
-from agents.webscraper import WebScraperAgent
-from agents.code_generator import CodeGeneratorAgent
-from agents.maintenance import MaintenanceAgent
-from core.knowledge_graph import KnowledgeGraph
-from core.vector_store import VectorStore
-from config import CONFIG
+from .agents.ingestion import IngestionAgent
+from .agents.processing import ProcessingAgent
+from .agents.distribution import DistributionAgent
+from .agents.manager import ManagerAgent
+from .agents.webscraper import WebScraperAgent
+from .agents.code_generator import CodeGeneratorAgent
+from .agents.maintenance import MaintenanceAgent
+from .core.knowledge_graph import KnowledgeGraph
+from .core.vector_store import VectorStore
+from .config import CONFIG
 import multiprocessing
 from fastapi import FastAPI, Request
 import uvicorn

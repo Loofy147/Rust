@@ -4,7 +4,7 @@ from agent.interfaces import VectorStorePlugin
 class ChromaVectorStore(VectorStorePlugin):
     def __init__(self, collection_name="my_vectors"):
         self.client = chromadb.Client()
-        self.collection = self.client.create_collection(collection_name)
+        self.collection = self.client.get_or_create_collection(collection_name)
 
     def add(self, vector, metadata):
         self.collection.add(
