@@ -93,24 +93,28 @@ class WorkflowEngine:
     def _handle_loop(self, workflow_id, step, memory, completed_steps):
         loop_condition = step["loop"]["condition"]
         loop_steps = step["loop"]["steps"]
-        loop_step_ids = [s["id"] for s in loop_steps]
 
+        # Check if the loop should continue
         if self._evaluate_condition(loop_condition, memory):
-            # Find the next step in the loop that is not completed
-            for loop_step in loop_steps:
-                if loop_step["id"] not in completed_steps:
-                    return [loop_step["id"]]
+            # Check the status of the inner loop steps
+            inner_completed = all(
+                s["id"] in completed_steps for s in loop_steps
+            )
 
-            # If all loop steps are completed, re-evaluate the loop condition
-            # To re-start the loop, we need to clear the completed steps of the loop
-            # This is a simplification. A more robust implementation would handle this differently.
-            for step_id in loop_step_ids:
-                if step_id in self._run_status[workflow_id]:
-                    del self._run_status[workflow_id][step_id]
-            return [loop_steps[0]]
-        else:
-            # If the loop condition is not met, the loop is finished.
-            return []
+            if not inner_completed:
+                # Find the first step of the loop that is not completed
+                for inner_step in loop_steps:
+                    if inner_step["id"] not in completed_steps:
+                        return [inner_step["id"]]
+            else:
+                # If all inner steps are completed, reset their status and run the first one
+                for inner_step in loop_steps:
+                    if inner_step["id"] in self._run_status[workflow_id]:
+                        del self._run_status[workflow_id][inner_step["id"]]
+                return [loop_steps[0]["id"]]
+
+        # If the loop condition is not met, the loop is finished.
+        return []
 
     def approve_hitl_step(self, workflow_id, step_id):
         with self._lock:
@@ -144,9 +148,11 @@ class WorkflowEngine:
             self.retry_step(workflow_id, step_id)
             step['retries'] -= 1
         elif 'on_failure' in step:
-            # This is a simplification. A more robust implementation would
-            # dynamically add the on_failure step to the workflow.
-            pass
+            failure_step_id = step['on_failure']
+            # Add the failure step to the workflow
+            if isinstance(workflow, nx.DiGraph):
+                workflow.add_node(failure_step_id, id=failure_step_id)
+                workflow.add_edge(step_id, failure_step_id)
 
     def get_memory(self, workflow_id):
         with self._lock:
@@ -211,16 +217,17 @@ class WorkflowEngine:
             return not self._evaluate_condition(condition["not"], memory)
 
         step_id = condition.get("step")
-        value = memory.get(step_id)
+        if step_id:
+            value = memory.get(step_id)
 
-        if "equals" in condition:
-            return value == condition["equals"]
-        if "not_equals" in condition:
-            return value != condition["not_equals"]
-        if "greater_than" in condition:
-            return value > condition["greater_than"]
-        if "less_than" in condition:
-            return value < condition["less_than"]
+            if "equals" in condition:
+                return value == condition["equals"]
+            if "not_equals" in condition:
+                return value != condition["not_equals"]
+            if "greater_than" in condition:
+                return value > condition["greater_than"]
+            if "less_than" in condition:
+                return value < condition["less_than"]
 
         return False
 
