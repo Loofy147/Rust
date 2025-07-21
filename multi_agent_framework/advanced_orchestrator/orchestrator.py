@@ -1,6 +1,6 @@
 from advanced_orchestrator.registry import AgentRegistry
 from advanced_orchestrator.workflow import WorkflowEngine
-from advanced_orchestrator.event_bus import EventBus
+from multi_agent_framework.distributed.message_broker import MessageBroker
 from advanced_orchestrator.monitoring import Monitoring
 from advanced_orchestrator.api import app
 from advanced_orchestrator.plugin_loader import PluginLoader
@@ -10,6 +10,7 @@ import uvicorn
 import time
 import yaml
 import os
+import json
 from agents.advanced.llm_reasoning import LLMReasoningAgent
 from agents.advanced.retriever import RetrieverAgent
 
@@ -18,12 +19,13 @@ class AdvancedOrchestrator:
         self.event_store = EventStore()
         self.registry = AgentRegistry(event_store=self.event_store)
         self.workflow_engine = WorkflowEngine(event_store=self.event_store)
-        self.event_bus = EventBus()
+        self.message_broker = MessageBroker()
         self.monitoring = Monitoring()
         # Inject dependencies into API
         app.REGISTRY = self.registry
         app.WORKFLOW_ENGINE = self.workflow_engine
-        app.EVENT_BUS = self.event_bus
+        app.MESSAGE_BROKER = self.message_broker
+        self.message_broker.declare_exchange('agent_exchange', 'direct')
         # Plugin loader
         config_path = os.path.join(os.path.dirname(__file__),
                                    '../config/config.yaml')
@@ -80,9 +82,9 @@ class AdvancedOrchestrator:
             # Step 1: Retrieve context
             retrieval = self.retriever_agent.process({'query': question})
             if retrieval.get('status') == 'error':
-                self.event_bus.publish(
-                    'error', {'workflow_id': workflow_id, 'step': 'retrieval',
-                              'error': retrieval})
+                self.message_broker.publish(
+                    'agent_exchange', 'error', json.dumps({'workflow_id': workflow_id, 'step': 'retrieval',
+                              'error': retrieval}))
                 self.workflow_engine.log_feedback(
                     workflow_id, 'retrieval',
                     {'type': 'error', 'error': retrieval})
@@ -93,10 +95,11 @@ class AdvancedOrchestrator:
                 {'question': question, 'context': context,
                  'feedback': feedback})
             if llm_result.get('status') == 'error':
-                self.event_bus.publish(
+                self.message_broker.publish(
+                    'agent_exchange',
                     'error',
-                    {'workflow_id': workflow_id, 'step': 'llm_reasoning',
-                     'error': llm_result})
+                    json.dumps({'workflow_id': workflow_id, 'step': 'llm_reasoning',
+                     'error': llm_result}))
                 self.workflow_engine.log_feedback(
                     workflow_id, 'llm_reasoning',
                     {'type': 'error', 'error': llm_result})
@@ -142,9 +145,9 @@ class AdvancedOrchestrator:
                 'message': str(e),
                 'trace': traceback.format_exc()
             }
-            self.event_bus.publish(
-                'error', {'workflow_id': workflow_id, 'step': 'orchestrator',
-                          'error': error_info})
+            self.message_broker.publish(
+                'agent_exchange', 'error', json.dumps({'workflow_id': workflow_id, 'step': 'orchestrator',
+                          'error': error_info}))
             self.workflow_engine.log_feedback(
                 workflow_id, 'orchestrator',
                 {'type': 'error', 'error': error_info})

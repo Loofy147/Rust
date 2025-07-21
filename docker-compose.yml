@@ -8,12 +8,19 @@ services:
       - API_KEY=your-secret-key
       - OPENAI_API_KEY=sk-test
       - DB_URL=sqlite:///kg.db
-      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672//
     volumes:
       - .:/app
     depends_on:
       - redis
+      - rabbitmq
   redis:
     image: redis:6-alpine
     ports:
       - "6379:6379"
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
