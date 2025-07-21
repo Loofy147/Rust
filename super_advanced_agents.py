@@ -135,12 +135,15 @@ class ExpiryAgent:
 
 # --- User Personalization Agent ---
 class PersonalizationAgent:
-    def __init__(self, name, vector_store, embedding_pipeline):
+    def __init__(self, name, vector_store, embedding_pipeline, encryption_agent=None):
         self.name = name
         self.vector_store = vector_store
         self.embedding_pipeline = embedding_pipeline
+        self.encryption_agent = encryption_agent
 
     def add_user_memory(self, text, user_id, uid=None):
+        if self.encryption_agent:
+            text = self.encryption_agent.encrypt(text)
         meta = {"text": text, "user_id": user_id, "timestamp": time.time()}
         self.vector_store.add(self.embedding_pipeline.embed(text), meta, uid)
 
@@ -148,7 +151,17 @@ class PersonalizationAgent:
         query_vector = self.embedding_pipeline.embed(query_text)
         def filter_fn(meta):
             return meta and meta.get("user_id") == user_id
-        return self.vector_store.search_with_filter(query_vector, top_k, filter_fn, return_scores=True)
+
+        results = self.vector_store.search_with_filter(query_vector, top_k, filter_fn, return_scores=True)
+
+        if self.encryption_agent:
+            decrypted_results = []
+            for meta, score, uid in results:
+                if meta and "text" in meta:
+                    meta["text"] = self.encryption_agent.decrypt(meta["text"])
+                decrypted_results.append((meta, score, uid))
+            return decrypted_results
+        return results
 
 # --- Provenance Agent ---
 class ProvenanceAgent:

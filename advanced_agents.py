@@ -93,11 +93,12 @@ class SummarizerAgent:
 
 # --- ConversationalAgent ---
 class ConversationalAgent:
-    def __init__(self, name, vector_store, embedding_pipeline, llm_generator):
+    def __init__(self, name, vector_store, embedding_pipeline, llm_generator, rbac_agent=None):
         self.name = name
         self.vector_store = vector_store
         self.embedding_pipeline = embedding_pipeline
         self.llm_generator = llm_generator
+        self.rbac_agent = rbac_agent
 
     def add_turn(self, user_text, agent_text, turn_id=None):
         self.vector_store.add(self.embedding_pipeline.embed(user_text), {"text": user_text, "role": "user", "agent": self.name}, f"{turn_id}_user" if turn_id else None)
@@ -108,7 +109,9 @@ class ConversationalAgent:
         results = self.vector_store.search(query_vector, top_k=top_k, return_scores=False)
         return [meta['text'] for meta in results if meta]
 
-    def chat(self, user_text):
+    def chat(self, user_text, user_id=None):
+        if self.rbac_agent and not self.rbac_agent.check_permission(user_id, "write"):
+            return "You do not have permission to chat."
         context = self.get_context(user_text, top_k=3)
         prompt = "You are a helpful assistant. Here is the conversation so far:\n" + "\n".join(context) + f"\nUser: {user_text}\nAgent:"
         response = self.llm_generator.generate(prompt, max_length=100)
