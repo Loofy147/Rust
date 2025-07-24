@@ -1,0 +1,3 @@
+[pytest]
+addopts = --cov=agent --cov=api --cov-report=term-missing
+python_paths = . multi_agent_framework kg_api api app

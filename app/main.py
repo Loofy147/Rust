@@ -21,7 +21,15 @@ app.add_middleware(
 )
 
 # OrchestratorAI instance (singleton for the app)
-orchestrator_ai = OrchestratorAI(max_workers=4, project_goal="Automate and scale all agent/data/LLM workflows.")
+orchestrator_ai = OrchestratorAI(project_goal="Automate and scale all agent/data/LLM workflows.")
+
+@app.on_event("startup")
+async def startup_event():
+    await orchestrator_ai.setup()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    await orchestrator_ai.stop()
 
 # --- Instantiate and register advanced agents ---
 store = FAISSVectorStore(dim=384)
