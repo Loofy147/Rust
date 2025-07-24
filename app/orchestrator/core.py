@@ -1,93 +1,160 @@
+import asyncio
 import logging
-import threading
-import queue
+import os
+import json
+from datetime import datetime
+from typing import Dict, Any, List, Optional, Callable
+import numpy as np
+import aioredis
+import hashlib
+import jwt
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
+from prometheus_client import Counter, Gauge, start_http_server
+from app.models.base import Base
+from app.models.vector_record import VectorRecord
+from enum import Enum
+from dataclasses import dataclass, field
 import time
-from concurrent.futures import ThreadPoolExecutor
-from typing import Callable, Any, Dict, List, Optional
 
-class Task:
-    def __init__(self, func: Callable, args: tuple = (), kwargs: dict = None, priority: int = 0, description: str = ""):
-        self.func = func
-        self.args = args
-        self.kwargs = kwargs or {}
-        self.priority = priority
-        self.description = description
+# --- Logging ---
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
+logger = logging.getLogger("OrchestratorAI")
 
-class GlobalContext:
-    def __init__(self, project_goal: str, schema: Optional[dict] = None):
-        self.project_goal = project_goal
-        self.schema = schema or {}
-        self.state = {}
-        self.lock = threading.Lock()
+# --- Prometheus Metrics ---
+TASKS_PROCESSED = Counter('orchestrator_tasks_processed', 'Tasks processed by orchestrator')
+VECTORS_STORED = Counter('orchestrator_vectors_stored', 'Vectors stored')
+ORCH_UPTIME = Gauge('orchestrator_uptime', 'Orchestrator uptime')
 
-    def update(self, key, value):
-        with self.lock:
-            self.state[key] = value
+# --- Database ---
+DB_URL = os.environ.get('DATABASE_URL', 'sqlite+aiosqlite:///orchestrator.db')
+engine = create_async_engine(DB_URL, echo=False)
+AsyncSessionLocal = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 
-    def get(self, key):
-        with self.lock:
-            return self.state.get(key)
+# --- Redis ---
+REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+QUEUE_NAME = os.environ.get('REDIS_QUEUE', 'agentsys-tasks')
+
+# --- JWT Auth ---
+JWT_SECRET = os.environ.get('JWT_SECRET', 'changemejwtsecret')
+JWT_ALGO = 'HS256'
+
+class VectorType(str, Enum):
+    EMBEDDING = "embedding"
+    FEATURE = "feature"
+
+@dataclass
+class VectorMetadata:
+    vector_id: str
+    vector_type: VectorType
+    dimensions: int
+    creation_timestamp: datetime
+    tenant: str
+    checksum: str = ""
+    extra: Dict[str, Any] = field(default_factory=dict)
 
 class OrchestratorAI:
-    def __init__(self, max_workers: int = 4, project_goal: str = "Build a robust, scalable, and intelligent agent system."):
+    def __init__(self, project_goal: str = "Build a robust, scalable, and intelligent agent system."):
         self.logger = logging.getLogger("OrchestratorAI")
-        self.global_context = GlobalContext(project_goal)
-        self.task_queue = queue.PriorityQueue()
-        self.executor = ThreadPoolExecutor(max_workers=max_workers)
+        self.project_goal = project_goal
         self.running = True
-        self.active_futures = []
         self.agent_registry: Dict[str, Any] = {}
-        self.supervisor_thread = threading.Thread(target=self.supervise, daemon=True)
-        self.supervisor_thread.start()
+        self.redis = None
+        self.db = None
+        self.supervisor_task = None
+
+    async def setup(self):
+        self.redis = await aioredis.create_redis_pool(REDIS_URL)
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        self.db = AsyncSessionLocal
+        start_http_server(9100)
+        self.supervisor_task = asyncio.create_task(self.supervise())
+        asyncio.create_task(self.run())
+        logger.info("OrchestratorAI setup complete.")
 
     def register_agent(self, name: str, agent: Any):
         self.agent_registry[name] = agent
         self.logger.info(f"Registered agent: {name}")
 
-    def submit_task(self, task: Task):
-        self.task_queue.put((task.priority, time.time(), task))
-        self.logger.info(f"Task submitted: {task.description}")
-
-    def run(self):
+    async def run(self):
+        logger.info("OrchestratorAI running and listening for external tasks.")
         while self.running:
             try:
-                _, _, task = self.task_queue.get(timeout=1)
-                future = self.executor.submit(self._run_task, task)
-                self.active_futures.append(future)
-            except queue.Empty:
-                continue
+                task_json = await self.redis.blpop(QUEUE_NAME, timeout=1)
+                if not task_json:
+                    await asyncio.sleep(0.1)
+                    continue
+                _, data = task_json
+                task_data = json.loads(data)
+                await self.process_external_task(task_data)
+            except Exception as e:
+                logger.error(f"Error in orchestrator loop: {e}")
+                await asyncio.sleep(2)
 
-    def _run_task(self, task: Task):
+    async def process_external_task(self, task_data: Dict[str, Any]):
         try:
-            self.logger.info(f"Running task: {task.description}")
-            result = task.func(*task.args, **task.kwargs)
-            self.logger.info(f"Task completed: {task.description}")
-            return result
+            token = task_data.get('jwt')
+            tenant = 'default'
+            if token:
+                try:
+                    payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGO])
+                    tenant = payload.get('tenant', 'default')
+                except Exception as e:
+                    logger.warning(f"JWT decode failed: {e}")
+
+            data = np.array(task_data['data'])
+            vector_id = f"vec_{hashlib.md5(data.tobytes()).hexdigest()[:8]}_{int(datetime.now().timestamp())}"
+            metadata = VectorMetadata(
+                vector_id=vector_id,
+                vector_type=task_data.get('vector_type', VectorType.EMBEDDING),
+                dimensions=data.shape[1] if len(data.shape) > 1 else data.shape[0],
+                creation_timestamp=datetime.now(),
+                tenant=tenant
+            )
+            checksum = hashlib.sha256(data.tobytes()).hexdigest()
+            metadata.checksum = checksum
+
+            await self.store_vector(data, metadata)
+            TASKS_PROCESSED.inc()
+            logger.info(f"Processed vector {vector_id} for tenant {tenant}")
+
         except Exception as e:
-            self.logger.error(f"Task failed: {task.description} | Error: {e}")
-            return None
+            logger.error(f"External task processing error: {e}")
 
-    def supervise(self):
+    async def store_vector(self, data: np.ndarray, metadata: VectorMetadata):
+        record = VectorRecord(
+            id=metadata.vector_id,
+            tenant=metadata.tenant,
+            vector_type=metadata.vector_type.value,
+            dimensions=metadata.dimensions,
+            data=data.tolist(),
+            metadata={'extra': metadata.extra},
+            created_at=metadata.creation_timestamp,
+            checksum=metadata.checksum
+        )
+        async with self.db() as session:
+            session.add(record)
+            await session.commit()
+        VECTORS_STORED.inc()
+
+    async def supervise(self):
         while self.running:
-            # Check for completed/faulty tasks
-            for future in list(self.active_futures):
-                if future.done():
-                    self.active_futures.remove(future)
-            # Dynamic scaling (example: increase workers if queue is long)
-            if self.task_queue.qsize() > len(self.active_futures) and self.executor._max_workers < 16:
-                self.executor._max_workers += 1
-                self.logger.info(f"Scaling up: max_workers={self.executor._max_workers}")
-            time.sleep(2)
+            await asyncio.sleep(2)
 
-    def stop(self):
+    async def stop(self):
         self.running = False
-        self.executor.shutdown(wait=True)
-        self.logger.info("OrchestratorAI stopped.")
+        if self.supervisor_task:
+            self.supervisor_task.cancel()
+        if self.redis:
+            self.redis.close()
+            await self.redis.wait_closed()
+        if self.db:
+            await self.db.close()
+        logger.info("OrchestratorAI stopped.")
 
     def get_status(self):
         return {
-            "active_futures": len(self.active_futures),
-            "queue_size": self.task_queue.qsize(),
-            "max_workers": self.executor._max_workers,
-            "global_context": self.global_context.state,
+            "running": self.running,
+            "agents": list(self.agent_registry.keys())
         }

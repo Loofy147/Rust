@@ -6,10 +6,12 @@ tenacity
 sqlalchemy
 chromadb
 pytest
-prometheus_fastapi_instrumentator
+prometheus-client
+prometheus-fastapi-instrumentator
 loguru
 celery
 redis
+aioredis
 opentelemetry-api
 opentelemetry-sdk
 opentelemetry-instrumentation
@@ -28,3 +30,8 @@ pillow
 python-dotenv
 beautifulsoup4
 pika
+numpy
+pyyaml
+requests
+httpx
+pytest-asyncio
