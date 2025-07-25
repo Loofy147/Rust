@@ -16,6 +16,7 @@ from app.models.vector_record import VectorRecord
 from enum import Enum
 from dataclasses import dataclass, field
 import time
+from .retry import retry_with_exponential_backoff
 
 # --- Logging ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
@@ -92,6 +93,7 @@ class OrchestratorAI:
                 logger.error(f"Error in orchestrator loop: {e}")
                 await asyncio.sleep(2)
 
+    @retry_with_exponential_backoff()
     async def process_external_task(self, task_data: Dict[str, Any]):
         try:
             token = task_data.get('jwt')

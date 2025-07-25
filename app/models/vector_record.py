@@ -8,6 +8,6 @@ class VectorRecord(Base):
     vector_type = Column(String)
     dimensions = Column(Integer)
     data = Column(JSON)
-    metadata = Column(JSON)
+    meta = Column(JSON)
     created_at = Column(DateTime)
     checksum = Column(String)
