@@ -15,7 +15,7 @@ import yaml # PyYAML must be installed: pip install pyyaml
 def setup_logging(config):
     log_config = config.get('logging', {})
     level = getattr(logging, log_config.get('level', 'INFO').upper(), logging.INFO)
-    fmt = log_config.get('format', '%(asctime)s - %(levelname)s - %(message)s')
+    fmt = log_config.get('format', '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     
     logging.basicConfig(level=level, format=fmt)
     
