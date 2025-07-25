@@ -1,6 +1,0 @@
-
-from .database_helpers import db_connect, Neo4jConnection
-
-def some_kg_function():
-    conn = Neo4jConnection("uri", "user", "password")
-    # ...
